@@ -3,6 +3,7 @@ use crate::errors::QuickLendXError;
 use crate::events::emit_invoice_settled;
 use crate::investment::{Investment, InvestmentStatus, InvestmentStorage};
 use crate::invoice::{Invoice, InvoiceStatus, InvoiceStorage};
+use crate::notifications::NotificationSystem;
 use crate::payments::transfer_funds;
 use crate::profits::calculate_profit;
 
@@ -54,6 +55,9 @@ pub fn settle_invoice(
     
     // Emit settlement event
     emit_invoice_settled(env, &invoice, investor_return, platform_fee);
+    
+    // Send notification about payment received
+    let _ = NotificationSystem::notify_payment_received(env, &invoice, payment_amount);
     
     Ok(())
 }

@@ -1,6 +1,6 @@
 #![no_std]
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, vec, Address, BytesN, Env, String, Vec,
+    contract, contractimpl, symbol_short, Address, BytesN, Env, String, Vec,
 };
 
 mod backup;
@@ -10,6 +10,7 @@ mod errors;
 mod events;
 mod investment;
 mod invoice;
+mod notifications;
 mod payments;
 mod profits;
 mod settlement;
@@ -33,6 +34,10 @@ use verification::{
 };
 
 use crate::backup::{Backup, BackupStatus, BackupStorage};
+use crate::notifications::{
+    Notification, NotificationDeliveryStatus, NotificationPreferences, NotificationPriority,
+    NotificationStats, NotificationSystem,
+};
 
 #[contract]
 pub struct QuickLendXContract;
@@ -121,6 +126,10 @@ impl QuickLendXContract {
         );
         InvoiceStorage::store_invoice(&env, &invoice);
         emit_invoice_uploaded(&env, &invoice);
+        
+        // Send notification
+        let _ = NotificationSystem::notify_invoice_created(&env, &invoice);
+        
         Ok(invoice.id)
     }
 
@@ -136,6 +145,9 @@ impl QuickLendXContract {
         invoice.verify();
         InvoiceStorage::update_invoice(&env, &invoice);
         emit_invoice_verified(&env, &invoice);
+        
+        // Send notification
+        let _ = NotificationSystem::notify_invoice_verified(&env, &invoice);
 
         // If invoice is funded (has escrow), release escrow funds to business
         if invoice.status == InvoiceStatus::Funded {
@@ -183,7 +195,7 @@ impl QuickLendXContract {
         InvoiceStorage::remove_from_status_invoices(&env, &invoice.status, &invoice_id);
 
         // Update status
-        match new_status {
+        match new_status.clone() {
             InvoiceStatus::Verified => invoice.verify(),
             InvoiceStatus::Paid => invoice.mark_as_paid(env.ledger().timestamp()),
             InvoiceStatus::Defaulted => invoice.mark_as_defaulted(),
@@ -198,7 +210,21 @@ impl QuickLendXContract {
 
         // Emit event
         env.events()
-            .publish((symbol_short!("updated"),), (invoice_id, new_status));
+            .publish((symbol_short!("updated"),), (invoice_id, new_status.clone()));
+
+        // Send notifications based on status change
+        match new_status {
+            InvoiceStatus::Verified => {
+                let _ = NotificationSystem::notify_invoice_verified(&env, &invoice);
+            }
+            InvoiceStatus::Paid => {
+                let _ = NotificationSystem::notify_payment_received(&env, &invoice, invoice.amount);
+            }
+            InvoiceStatus::Defaulted => {
+                let _ = NotificationSystem::notify_invoice_defaulted(&env, &invoice);
+            }
+            _ => {}
+        }
 
         Ok(())
     }
@@ -258,6 +284,10 @@ impl QuickLendXContract {
         BidStorage::store_bid(&env, &bid);
         // Track bid for this invoice
         BidStorage::add_bid_to_invoice(&env, &invoice_id, &bid_id);
+        
+        // Send notification for business about new bid
+        let _ = NotificationSystem::notify_bid_received(&env, &invoice, &bid);
+        
         Ok(bid_id)
     }
 
@@ -312,6 +342,17 @@ impl QuickLendXContract {
         let escrow = EscrowStorage::get_escrow(&env, &escrow_id)
             .expect("Escrow should exist after creation");
         emit_escrow_created(&env, &escrow);
+
+        // Send notification to investor for bid acceptance
+        let _ = NotificationSystem::notify_bid_accepted(&env, &invoice, &bid);
+        
+        // Send notification about invoice status change
+        let _ = NotificationSystem::notify_invoice_status_changed(
+            &env,
+            &invoice,
+            &InvoiceStatus::Verified,
+            &InvoiceStatus::Funded,
+        );
 
         Ok(())
     }
@@ -544,6 +585,67 @@ impl QuickLendXContract {
     ) -> Result<payments::Escrow, QuickLendXError> {
         EscrowStorage::get_escrow_by_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::StorageKeyNotFound)
+    }
+
+    ///== Notification Management Functions ==///
+
+    /// Get a notification by ID
+    pub fn get_notification(env: Env, notification_id: BytesN<32>) -> Option<Notification> {
+        NotificationSystem::get_notification(&env, &notification_id)
+    }
+
+    /// Update notification delivery status
+    pub fn update_notification_status(
+        env: Env,
+        notification_id: BytesN<32>,
+        status: NotificationDeliveryStatus,
+    ) -> Result<(), QuickLendXError> {
+        NotificationSystem::update_notification_status(&env, &notification_id, status)
+    }
+
+    /// Get all notifications for a user
+    pub fn get_user_notifications(env: Env, user: Address) -> Vec<BytesN<32>> {
+        NotificationSystem::get_user_notifications(&env, &user)
+    }
+
+    /// Get user notification preferences
+    pub fn get_notification_preferences(env: Env, user: Address) -> NotificationPreferences {
+        NotificationSystem::get_user_preferences(&env, &user)
+    }
+
+    /// Update user notification preferences
+    pub fn update_notification_preferences(
+        env: Env,
+        user: Address,
+        preferences: NotificationPreferences,
+    ) -> Result<(), QuickLendXError> {
+        user.require_auth();
+        NotificationSystem::update_user_preferences(&env, &user, preferences);
+        Ok(())
+    }
+
+    /// Get notification statistics for a user
+    pub fn get_user_notification_stats(env: Env, user: Address) -> NotificationStats {
+        NotificationSystem::get_user_notification_stats(&env, &user)
+    }
+
+    /// Check for overdue invoices and send notifications (admin or automated process)
+    pub fn check_overdue_invoices(env: Env) -> Result<u32, QuickLendXError> {
+        let current_timestamp = env.ledger().timestamp();
+        let funded_invoices = InvoiceStorage::get_invoices_by_status(&env, &InvoiceStatus::Funded);
+        let mut overdue_count = 0u32;
+
+        for invoice_id in funded_invoices.iter() {
+            if let Some(invoice) = InvoiceStorage::get_invoice(&env, &invoice_id) {
+                if invoice.is_overdue(current_timestamp) {
+                    // Send overdue notification
+                    let _ = NotificationSystem::notify_payment_overdue(&env, &invoice);
+                    overdue_count += 1;
+                }
+            }
+        }
+
+        Ok(overdue_count)
     }
 
     /// Create a backup of all invoice data
