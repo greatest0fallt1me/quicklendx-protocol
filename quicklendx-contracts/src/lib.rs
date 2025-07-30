@@ -33,7 +33,7 @@ use verification::{
 
 use crate::backup::{Backup, BackupStatus, BackupStorage};
 use crate::notifications::{
-    Notification, NotificationDeliveryStatus, NotificationPreferences, NotificationPriority,
+    Notification, NotificationDeliveryStatus, NotificationPreferences,
     NotificationStats, NotificationSystem,
 };
 
@@ -784,7 +784,7 @@ impl QuickLendXContract {
         // Clear all business invoices
         let verified_businesses = BusinessVerificationStorage::get_verified_businesses(env);
         for business in verified_businesses.iter() {
-            let invoices = InvoiceStorage::get_business_invoices(env, &business);
+            let _ = InvoiceStorage::get_business_invoices(env, &business);
             let key = (symbol_short!("business"), business.clone());
             env.storage().instance().remove(&key);
         }

@@ -495,7 +495,6 @@ impl NotificationSystem {
                 Some(invoice.id.clone()),
             )?;
         }
-
         Ok(())
     }
 
@@ -541,7 +540,7 @@ impl NotificationSystem {
     pub fn notify_bid_received(
         env: &Env,
         invoice: &Invoice,
-        bid: &Bid,
+        _: &Bid, //bid
     ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "New Bid Received");
         let message = String::from_str(env, "A new bid has been placed on your invoice");
@@ -588,7 +587,7 @@ impl NotificationSystem {
     pub fn notify_payment_received(
         env: &Env,
         invoice: &Invoice,
-        amount: i128,
+        _: i128, //amount
     ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Payment Received");
         let message = String::from_str(env, "Payment has been received for your invoice");

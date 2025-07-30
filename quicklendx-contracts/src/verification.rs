@@ -1,5 +1,5 @@
 use crate::errors::QuickLendXError;
-use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Vec};
 
 #[contracttype]
 pub enum BusinessVerificationStatus {
