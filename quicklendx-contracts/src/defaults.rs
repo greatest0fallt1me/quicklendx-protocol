@@ -18,9 +18,9 @@ pub fn handle_default(env: &Env, invoice_id: &BytesN<32>) -> Result<(), QuickLen
     investment.status = InvestmentStatus::Withdrawn;
     InvestmentStorage::update_investment(env, &investment);
     emit_invoice_defaulted(env, &invoice);
-    
+
     // Send notification about invoice default
     let _ = NotificationSystem::notify_invoice_defaulted(env, &invoice);
-    
+
     Ok(())
 }

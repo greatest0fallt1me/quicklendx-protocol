@@ -1,7 +1,5 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contractimpl, symbol_short, Address, BytesN, Env, String, Vec,
-};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, String, Vec};
 
 mod backup;
 mod bid;
@@ -126,10 +124,10 @@ impl QuickLendXContract {
         );
         InvoiceStorage::store_invoice(&env, &invoice);
         emit_invoice_uploaded(&env, &invoice);
-        
+
         // Send notification
         let _ = NotificationSystem::notify_invoice_created(&env, &invoice);
-        
+
         Ok(invoice.id)
     }
 
@@ -145,7 +143,7 @@ impl QuickLendXContract {
         invoice.verify();
         InvoiceStorage::update_invoice(&env, &invoice);
         emit_invoice_verified(&env, &invoice);
-        
+
         // Send notification
         let _ = NotificationSystem::notify_invoice_verified(&env, &invoice);
 
@@ -209,8 +207,10 @@ impl QuickLendXContract {
         InvoiceStorage::add_to_status_invoices(&env, &invoice.status, &invoice_id);
 
         // Emit event
-        env.events()
-            .publish((symbol_short!("updated"),), (invoice_id, new_status.clone()));
+        env.events().publish(
+            (symbol_short!("updated"),),
+            (invoice_id, new_status.clone()),
+        );
 
         // Send notifications based on status change
         match new_status {
@@ -284,10 +284,10 @@ impl QuickLendXContract {
         BidStorage::store_bid(&env, &bid);
         // Track bid for this invoice
         BidStorage::add_bid_to_invoice(&env, &invoice_id, &bid_id);
-        
+
         // Send notification for business about new bid
         let _ = NotificationSystem::notify_bid_received(&env, &invoice, &bid);
-        
+
         Ok(bid_id)
     }
 
@@ -345,7 +345,7 @@ impl QuickLendXContract {
 
         // Send notification to investor for bid acceptance
         let _ = NotificationSystem::notify_bid_accepted(&env, &invoice, &bid);
-        
+
         // Send notification about invoice status change
         let _ = NotificationSystem::notify_invoice_status_changed(
             &env,

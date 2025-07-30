@@ -1,8 +1,6 @@
-use soroban_sdk::{
-    contracttype, Address, Bytes, BytesN, Env, Map, String, Vec, symbol_short, vec,
-};
-use crate::invoice::{Invoice, InvoiceStatus};
 use crate::bid::Bid;
+use crate::invoice::{Invoice, InvoiceStatus};
+use soroban_sdk::{contracttype, symbol_short, vec, Address, Bytes, BytesN, Env, Map, String, Vec};
 
 /// Notification types for different events
 #[contracttype]
@@ -89,9 +87,12 @@ impl Notification {
         message: String,
         related_invoice_id: Option<BytesN<32>>,
     ) -> Self {
-        let id = env.crypto().keccak256(&Bytes::from_array(&env, &env.ledger().timestamp().to_be_bytes()));
+        let id = env.crypto().keccak256(&Bytes::from_array(
+            &env,
+            &env.ledger().timestamp().to_be_bytes(),
+        ));
         let created_at = env.ledger().timestamp();
-        
+
         Self {
             id: id.into(),
             recipient,
@@ -134,7 +135,6 @@ impl Notification {
     }
 }
 
-
 /// User notification preferences
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -175,12 +175,24 @@ impl NotificationPreferences {
     }
 
     /// Check if user wants notifications for a specific type
-    pub fn should_notify(&self, notification_type: &NotificationType, priority: &NotificationPriority) -> bool {
+    pub fn should_notify(
+        &self,
+        notification_type: &NotificationType,
+        priority: &NotificationPriority,
+    ) -> bool {
         // Check minimum priority first
         let priority_check = match (&self.minimum_priority, priority) {
             (NotificationPriority::Critical, NotificationPriority::Critical) => true,
-            (NotificationPriority::High, NotificationPriority::High | NotificationPriority::Critical) => true,
-            (NotificationPriority::Medium, NotificationPriority::Medium | NotificationPriority::High | NotificationPriority::Critical) => true,
+            (
+                NotificationPriority::High,
+                NotificationPriority::High | NotificationPriority::Critical,
+            ) => true,
+            (
+                NotificationPriority::Medium,
+                NotificationPriority::Medium
+                | NotificationPriority::High
+                | NotificationPriority::Critical,
+            ) => true,
             (NotificationPriority::Low, _) => true,
             _ => false,
         };
@@ -245,7 +257,12 @@ impl NotificationSystem {
         // Emit notification event
         env.events().publish(
             (symbol_short!("notif"),),
-            (notification.id.clone(), recipient, notification_type, priority),
+            (
+                notification.id.clone(),
+                recipient,
+                notification_type,
+                priority,
+            ),
         );
 
         Ok(notification.id)
@@ -273,7 +290,7 @@ impl NotificationSystem {
             .ok_or(crate::errors::QuickLendXError::NotificationNotFound)?;
 
         let timestamp = env.ledger().timestamp();
-        
+
         match status {
             NotificationDeliveryStatus::Sent => notification.mark_as_sent(timestamp),
             NotificationDeliveryStatus::Delivered => notification.mark_as_delivered(timestamp),
@@ -296,13 +313,18 @@ impl NotificationSystem {
     /// Get user notifications
     pub fn get_user_notifications(env: &Env, user: &Address) -> Vec<BytesN<32>> {
         let key = Self::get_user_notifications_key(user);
-        env.storage().instance().get(&key).unwrap_or_else(|| vec![env])
+        env.storage()
+            .instance()
+            .get(&key)
+            .unwrap_or_else(|| vec![env])
     }
 
     /// Get user notification preferences
     pub fn get_user_preferences(env: &Env, user: &Address) -> NotificationPreferences {
         let key = DataKey::UserPreferences(user.clone());
-        env.storage().instance().get(&key)
+        env.storage()
+            .instance()
+            .get(&key)
             .unwrap_or_else(|| NotificationPreferences::default_for_user(env, user.clone()))
     }
 
@@ -316,10 +338,8 @@ impl NotificationSystem {
         env.storage().instance().set(&key, &preferences);
 
         // Emit preferences update event
-        env.events().publish(
-            (symbol_short!("pref_up"),),
-            (user.clone(),),
-        );
+        env.events()
+            .publish((symbol_short!("pref_up"),), (user.clone(),));
     }
 
     /// Get notification statistics for a user
@@ -339,12 +359,12 @@ impl NotificationSystem {
                     NotificationDeliveryStatus::Delivered => {
                         stats.total_sent += 1;
                         stats.total_delivered += 1;
-                    },
+                    }
                     NotificationDeliveryStatus::Read => {
                         stats.total_sent += 1;
                         stats.total_delivered += 1;
                         stats.total_read += 1;
-                    },
+                    }
                     NotificationDeliveryStatus::Failed => stats.total_failed += 1,
                     _ => {}
                 }
@@ -375,10 +395,16 @@ impl NotificationSystem {
 // Notification helper functions for common scenarios
 impl NotificationSystem {
     /// Create invoice created notification
-    pub fn notify_invoice_created(env: &Env, invoice: &Invoice) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_invoice_created(
+        env: &Env,
+        invoice: &Invoice,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Invoice Created");
-        let message = String::from_str(env, "Your invoice has been successfully created and is pending verification");
-        
+        let message = String::from_str(
+            env,
+            "Your invoice has been successfully created and is pending verification",
+        );
+
         Self::create_notification(
             env,
             invoice.business.clone(),
@@ -393,10 +419,16 @@ impl NotificationSystem {
     }
 
     /// Create invoice verified notification
-    pub fn notify_invoice_verified(env: &Env, invoice: &Invoice) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_invoice_verified(
+        env: &Env,
+        invoice: &Invoice,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Invoice Verified");
-        let message = String::from_str(env, "Your invoice has been verified and is now available for funding");
-        
+        let message = String::from_str(
+            env,
+            "Your invoice has been verified and is now available for funding",
+        );
+
         Self::create_notification(
             env,
             invoice.business.clone(),
@@ -418,17 +450,23 @@ impl NotificationSystem {
         new_status: &InvoiceStatus,
     ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Invoice Status Updated");
-        
+
         let status_text = match (old_status, new_status) {
-            (InvoiceStatus::Pending, InvoiceStatus::Verified) => "Your invoice has been verified and is now available for funding",
-            (InvoiceStatus::Verified, InvoiceStatus::Funded) => "Your invoice has been funded by an investor",
-            (InvoiceStatus::Funded, InvoiceStatus::Paid) => "Your invoice has been paid successfully",
+            (InvoiceStatus::Pending, InvoiceStatus::Verified) => {
+                "Your invoice has been verified and is now available for funding"
+            }
+            (InvoiceStatus::Verified, InvoiceStatus::Funded) => {
+                "Your invoice has been funded by an investor"
+            }
+            (InvoiceStatus::Funded, InvoiceStatus::Paid) => {
+                "Your invoice has been paid successfully"
+            }
             (_, InvoiceStatus::Defaulted) => "Your invoice has been marked as defaulted",
             _ => "Your invoice status has been updated",
         };
-        
+
         let message = String::from_str(env, status_text);
-        
+
         let priority = match new_status {
             InvoiceStatus::Funded | InvoiceStatus::Paid => NotificationPriority::High,
             InvoiceStatus::Defaulted => NotificationPriority::Critical,
@@ -462,10 +500,13 @@ impl NotificationSystem {
     }
 
     /// Create payment overdue notification
-    pub fn notify_payment_overdue(env: &Env, invoice: &Invoice) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_payment_overdue(
+        env: &Env,
+        invoice: &Invoice,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Payment Overdue");
         let message = String::from_str(env, "Your invoice payment is overdue");
-        
+
         Self::create_notification(
             env,
             invoice.business.clone(),
@@ -479,8 +520,9 @@ impl NotificationSystem {
         // Notify investor
         if let Some(investor) = &invoice.investor {
             let investor_title = String::from_str(env, "Invoice Payment Overdue");
-            let investor_message = String::from_str(env, "An invoice you funded has an overdue payment");
-            
+            let investor_message =
+                String::from_str(env, "An invoice you funded has an overdue payment");
+
             Self::create_notification(
                 env,
                 investor.clone(),
@@ -496,10 +538,14 @@ impl NotificationSystem {
     }
 
     /// Create bid received notification for business
-    pub fn notify_bid_received(env: &Env, invoice: &Invoice, bid: &Bid) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_bid_received(
+        env: &Env,
+        invoice: &Invoice,
+        bid: &Bid,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "New Bid Received");
         let message = String::from_str(env, "A new bid has been placed on your invoice");
-        
+
         Self::create_notification(
             env,
             invoice.business.clone(),
@@ -514,10 +560,17 @@ impl NotificationSystem {
     }
 
     /// Create bid accepted notification for investor
-    pub fn notify_bid_accepted(env: &Env, invoice: &Invoice, bid: &Bid) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_bid_accepted(
+        env: &Env,
+        invoice: &Invoice,
+        bid: &Bid,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Bid Accepted");
-        let message = String::from_str(env, "Your bid has been accepted and funds are being escrowed");
-        
+        let message = String::from_str(
+            env,
+            "Your bid has been accepted and funds are being escrowed",
+        );
+
         Self::create_notification(
             env,
             bid.investor.clone(),
@@ -532,10 +585,14 @@ impl NotificationSystem {
     }
 
     /// Create payment received notification
-    pub fn notify_payment_received(env: &Env, invoice: &Invoice, amount: i128) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_payment_received(
+        env: &Env,
+        invoice: &Invoice,
+        amount: i128,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Payment Received");
         let message = String::from_str(env, "Payment has been received for your invoice");
-        
+
         // Notify business
         Self::create_notification(
             env,
@@ -550,8 +607,9 @@ impl NotificationSystem {
         // Notify investor if applicable
         if let Some(investor) = &invoice.investor {
             let investor_title = String::from_str(env, "Investment Payment Received");
-            let investor_message = String::from_str(env, "Payment has been received for an invoice you funded");
-            
+            let investor_message =
+                String::from_str(env, "Payment has been received for an invoice you funded");
+
             Self::create_notification(
                 env,
                 investor.clone(),
@@ -567,10 +625,13 @@ impl NotificationSystem {
     }
 
     /// Create invoice defaulted notification
-    pub fn notify_invoice_defaulted(env: &Env, invoice: &Invoice) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn notify_invoice_defaulted(
+        env: &Env,
+        invoice: &Invoice,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         let title = String::from_str(env, "Invoice Defaulted");
         let message = String::from_str(env, "Your invoice has been marked as defaulted");
-        
+
         // Notify business
         Self::create_notification(
             env,
@@ -586,7 +647,7 @@ impl NotificationSystem {
         if let Some(investor) = &invoice.investor {
             let investor_title = String::from_str(env, "Investment Defaulted");
             let investor_message = String::from_str(env, "An invoice you funded has defaulted");
-            
+
             Self::create_notification(
                 env,
                 investor.clone(),
@@ -600,4 +661,4 @@ impl NotificationSystem {
 
         Ok(())
     }
-} 
+}
