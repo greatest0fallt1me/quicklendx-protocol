@@ -21,7 +21,7 @@ use defaults::handle_default as do_handle_default;
 use errors::QuickLendXError;
 use events::{
     emit_escrow_created, emit_escrow_refunded, emit_escrow_released, emit_invoice_uploaded,
-    emit_invoice_verified,
+    emit_invoice_verified, emit_audit_query, emit_audit_validation,
 };
 use investment::{Investment, InvestmentStatus, InvestmentStorage};
 use invoice::{Invoice, InvoiceStatus, InvoiceStorage};
@@ -138,7 +138,7 @@ impl QuickLendXContract {
             return Err(QuickLendXError::InvalidStatus);
         }
         // (Optional: Only admin can verify, add check here if needed)
-        invoice.verify();
+        invoice.verify(&env, invoice.business.clone());
         InvoiceStorage::update_invoice(&env, &invoice);
         emit_invoice_verified(&env, &invoice);
 
@@ -189,8 +189,8 @@ impl QuickLendXContract {
 
         // Update status
         match new_status {
-            InvoiceStatus::Verified => invoice.verify(),
-            InvoiceStatus::Paid => invoice.mark_as_paid(env.ledger().timestamp()),
+            InvoiceStatus::Verified => invoice.verify(&env, invoice.business.clone()),
+            InvoiceStatus::Paid => invoice.mark_as_paid(&env, invoice.business.clone(), env.ledger().timestamp()),
             InvoiceStatus::Defaulted => invoice.mark_as_defaulted(),
             _ => return Err(QuickLendXError::InvalidStatus),
         }
@@ -297,6 +297,7 @@ impl QuickLendXContract {
         BidStorage::update_bid(&env, &bid);
         // Mark invoice as funded
         invoice.mark_as_funded(
+            &env,
             bid.investor.clone(),
             bid.bid_amount,
             env.ledger().timestamp(),
@@ -694,12 +695,6 @@ impl QuickLendXContract {
 
         Ok(())
     }
-}
-
-#[cfg(test)]
-mod test;
-
-
     /// Get audit trail for an invoice
     pub fn get_invoice_audit_trail(env: Env, invoice_id: BytesN<32>) -> Vec<BytesN<32>> {
         AuditStorage::get_invoice_audit_trail(&env, &invoice_id)
@@ -718,7 +713,7 @@ mod test;
         limit: u32,
     ) -> Vec<AuditLogEntry> {
         let results = AuditStorage::query_audit_logs(&env, &filter, limit);
-        emit_audit_query(&env, "query_audit_logs".to_string(), results.len() as u32);
+        emit_audit_query(&env, String::from_str(&env, "query_audit_logs"), results.len() as u32);
         results
     }
 
@@ -749,3 +744,7 @@ mod test;
     pub fn get_audit_entries_by_actor(env: Env, actor: Address) -> Vec<BytesN<32>> {
         AuditStorage::get_audit_entries_by_actor(&env, &actor)
     }
+}
+
+#[cfg(test)]
+mod test;
