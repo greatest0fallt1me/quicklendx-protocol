@@ -76,12 +76,29 @@ impl Invoice {
             average_rating: None,
             total_ratings: 0,
             ratings: vec![env],
-        }
+        };
         
         // Log invoice creation
         log_invoice_created(env, &invoice);
         
         invoice
+    }
+
+    /// Generate a unique invoice ID
+    fn generate_unique_invoice_id(env: &Env) -> BytesN<32> {
+        let timestamp = env.ledger().timestamp();
+        let sequence = env.ledger().sequence();
+        let counter_key = symbol_short!("inv_cnt");
+        let counter: u32 = env.storage().instance().get(&counter_key).unwrap_or(0);
+        env.storage().instance().set(&counter_key, &(counter + 1));
+        
+        // Create a unique ID from timestamp, sequence, and counter
+        let mut id_bytes = [0u8; 32];
+        id_bytes[0..8].copy_from_slice(&timestamp.to_be_bytes());
+        id_bytes[8..12].copy_from_slice(&sequence.to_be_bytes());
+        id_bytes[12..16].copy_from_slice(&counter.to_be_bytes());
+        
+        BytesN::from_array(env, &id_bytes)
     }
 
     /// Check if invoice is available for funding
@@ -124,6 +141,57 @@ impl Invoice {
         
         // Log status change
         log_invoice_status_change(env, self.id.clone(), actor, old_status, self.status.clone());
+    }
+
+    /// Mark invoice as defaulted
+    pub fn mark_as_defaulted(&mut self) {
+        self.status = InvoiceStatus::Defaulted;
+    }
+
+    /// Check if invoice has ratings
+    pub fn has_ratings(&self) -> bool {
+        self.total_ratings > 0
+    }
+
+    /// Add a rating to the invoice
+    pub fn add_rating(&mut self, rating: u32, feedback: String, rated_by: Address, rated_at: u64) -> Result<(), crate::errors::QuickLendXError> {
+        if rating < 1 || rating > 5 {
+            return Err(crate::errors::QuickLendXError::InvalidRating);
+        }
+
+        let new_rating = InvoiceRating {
+            rating,
+            feedback,
+            rated_by,
+            rated_at,
+        };
+
+        self.ratings.push_back(new_rating);
+        self.total_ratings += 1;
+
+        // Recalculate average rating
+        let total: u32 = self.ratings.iter().map(|r| r.rating).sum();
+        self.average_rating = Some(total / self.total_ratings);
+
+        Ok(())
+    }
+
+    /// Get the highest rating
+    pub fn get_highest_rating(&self) -> Option<u32> {
+        if self.ratings.is_empty() {
+            None
+        } else {
+            Some(self.ratings.iter().map(|r| r.rating).max().unwrap())
+        }
+    }
+
+    /// Get the lowest rating
+    pub fn get_lowest_rating(&self) -> Option<u32> {
+        if self.ratings.is_empty() {
+            None
+        } else {
+            Some(self.ratings.iter().map(|r| r.rating).min().unwrap())
+        }
     }
 }
 
