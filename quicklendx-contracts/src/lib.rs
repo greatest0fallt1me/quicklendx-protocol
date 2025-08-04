@@ -75,6 +75,8 @@ impl QuickLendXContract {
             currency.clone(),
             due_date,
             description,
+            invoice::InvoiceCategory::Other,
+            vec![&env],
         );
 
         // Store the invoice
@@ -123,6 +125,8 @@ impl QuickLendXContract {
             currency.clone(),
             due_date,
             description.clone(),
+            invoice::InvoiceCategory::Other,
+            vec![&env],
         );
         InvoiceStorage::store_invoice(&env, &invoice);
         emit_invoice_uploaded(&env, &invoice);

@@ -11,6 +11,19 @@ pub enum InvoiceStatus {
     Defaulted, // Invoice payment is overdue/defaulted
 }
 
+/// Invoice category enumeration
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InvoiceCategory {
+    Services,      // Professional services
+    Products,      // Physical products
+    Consulting,    // Consulting services
+    Manufacturing, // Manufacturing services
+    Technology,    // Technology services/products
+    Healthcare,    // Healthcare services
+    Other,         // Other categories
+}
+
 /// Invoice rating structure
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -33,6 +46,8 @@ pub struct Invoice {
     pub status: InvoiceStatus,       // Current status of the invoice
     pub created_at: u64,             // Creation timestamp
     pub description: String,         // Invoice description/metadata
+    pub category: InvoiceCategory,   // Invoice category
+    pub tags: Vec<String>,           // Invoice tags for better discoverability
     pub funded_amount: i128,         // Amount funded by investors
     pub funded_at: Option<u64>,      // When the invoice was funded
     pub investor: Option<Address>,   // Address of the investor who funded
@@ -56,6 +71,8 @@ impl Invoice {
         currency: Address,
         due_date: u64,
         description: String,
+        category: InvoiceCategory,
+        tags: Vec<String>,
     ) -> Self {
         let id = Self::generate_unique_invoice_id(env);
         let created_at = env.ledger().timestamp();
@@ -69,6 +86,8 @@ impl Invoice {
             status: InvoiceStatus::Pending,
             created_at,
             description,
+            category,
+            tags,
             funded_amount: 0,
             funded_at: None,
             investor: None,
@@ -192,6 +211,70 @@ impl Invoice {
         } else {
             Some(self.ratings.iter().map(|r| r.rating).min().unwrap())
         }
+    }
+
+    /// Add a tag to the invoice
+    pub fn add_tag(&mut self, env: &Env, tag: String) -> Result<(), crate::errors::QuickLendXError> {
+        // Validate tag length (1-50 characters)
+        if tag.len() < 1 || tag.len() > 50 {
+            return Err(crate::errors::QuickLendXError::InvalidTag);
+        }
+
+        // Check tag limit (max 10 tags per invoice)
+        if self.tags.len() >= 10 {
+            return Err(crate::errors::QuickLendXError::TagLimitExceeded);
+        }
+
+        // Check if tag already exists
+        for existing_tag in self.tags.iter() {
+            if existing_tag == tag {
+                return Ok(()); // Tag already exists, no need to add
+            }
+        }
+
+        self.tags.push_back(tag);
+        Ok(())
+    }
+
+    /// Remove a tag from the invoice
+    pub fn remove_tag(&mut self, tag: String) -> Result<(), crate::errors::QuickLendXError> {
+        let mut new_tags = Vec::new(&self.tags.env());
+        let mut found = false;
+
+        for existing_tag in self.tags.iter() {
+            if existing_tag != tag {
+                new_tags.push_back(existing_tag.clone());
+            } else {
+                found = true;
+            }
+        }
+
+        if !found {
+            return Err(crate::errors::QuickLendXError::InvalidTag);
+        }
+
+        self.tags = new_tags;
+        Ok(())
+    }
+
+    /// Check if invoice has a specific tag
+    pub fn has_tag(&self, tag: String) -> bool {
+        for existing_tag in self.tags.iter() {
+            if existing_tag == tag {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Update the invoice category
+    pub fn update_category(&mut self, category: InvoiceCategory) {
+        self.category = category;
+    }
+
+    /// Get all tags as a vector
+    pub fn get_tags(&self) -> Vec<String> {
+        self.tags.clone()
     }
 }
 
