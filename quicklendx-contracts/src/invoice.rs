@@ -421,4 +421,126 @@ impl InvoiceStorage {
         }
         count
     }
+
+    /// Get invoices by category
+    pub fn get_invoices_by_category(env: &Env, category: &InvoiceCategory) -> Vec<BytesN<32>> {
+        let mut category_invoices = vec![env];
+        let all_statuses = [
+            InvoiceStatus::Pending,
+            InvoiceStatus::Verified,
+            InvoiceStatus::Funded,
+            InvoiceStatus::Paid,
+            InvoiceStatus::Defaulted,
+        ];
+        
+        for status in all_statuses.iter() {
+            let invoices = Self::get_invoices_by_status(env, status);
+            for invoice_id in invoices.iter() {
+                if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                    if invoice.category == *category {
+                        category_invoices.push_back(invoice_id);
+                    }
+                }
+            }
+        }
+        category_invoices
+    }
+
+    /// Get invoices by category and status
+    pub fn get_invoices_by_category_and_status(
+        env: &Env,
+        category: &InvoiceCategory,
+        status: &InvoiceStatus,
+    ) -> Vec<BytesN<32>> {
+        let mut filtered_invoices = vec![env];
+        let invoices = Self::get_invoices_by_status(env, status);
+        
+        for invoice_id in invoices.iter() {
+            if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                if invoice.category == *category {
+                    filtered_invoices.push_back(invoice_id);
+                }
+            }
+        }
+        filtered_invoices
+    }
+
+    /// Get invoices by tag
+    pub fn get_invoices_by_tag(env: &Env, tag: &String) -> Vec<BytesN<32>> {
+        let mut tagged_invoices = vec![env];
+        let all_statuses = [
+            InvoiceStatus::Pending,
+            InvoiceStatus::Verified,
+            InvoiceStatus::Funded,
+            InvoiceStatus::Paid,
+            InvoiceStatus::Defaulted,
+        ];
+        
+        for status in all_statuses.iter() {
+            let invoices = Self::get_invoices_by_status(env, status);
+            for invoice_id in invoices.iter() {
+                if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                    if invoice.has_tag(tag.clone()) {
+                        tagged_invoices.push_back(invoice_id);
+                    }
+                }
+            }
+        }
+        tagged_invoices
+    }
+
+    /// Get invoices by multiple tags (AND logic - must have all tags)
+    pub fn get_invoices_by_tags(env: &Env, tags: &Vec<String>) -> Vec<BytesN<32>> {
+        let mut tagged_invoices = vec![env];
+        let all_statuses = [
+            InvoiceStatus::Pending,
+            InvoiceStatus::Verified,
+            InvoiceStatus::Funded,
+            InvoiceStatus::Paid,
+            InvoiceStatus::Defaulted,
+        ];
+        
+        for status in all_statuses.iter() {
+            let invoices = Self::get_invoices_by_status(env, status);
+            for invoice_id in invoices.iter() {
+                if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                    let mut has_all_tags = true;
+                    for tag in tags.iter() {
+                        if !invoice.has_tag(tag.clone()) {
+                            has_all_tags = false;
+                            break;
+                        }
+                    }
+                    if has_all_tags {
+                        tagged_invoices.push_back(invoice_id);
+                    }
+                }
+            }
+        }
+        tagged_invoices
+    }
+
+    /// Get invoice count by category
+    pub fn get_invoice_count_by_category(env: &Env, category: &InvoiceCategory) -> u32 {
+        Self::get_invoices_by_category(env, category).len() as u32
+    }
+
+    /// Get invoice count by tag
+    pub fn get_invoice_count_by_tag(env: &Env, tag: &String) -> u32 {
+        Self::get_invoices_by_tag(env, tag).len() as u32
+    }
+
+    /// Get all available categories
+    pub fn get_all_categories(env: &Env) -> Vec<InvoiceCategory> {
+        vec![
+            env,
+            InvoiceCategory::Services,
+            InvoiceCategory::Products,
+            InvoiceCategory::Consulting,
+            InvoiceCategory::Manufacturing,
+            InvoiceCategory::Technology,
+            InvoiceCategory::Healthcare,
+            InvoiceCategory::Other,
+        ]
+    }
 }
