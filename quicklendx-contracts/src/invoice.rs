@@ -11,6 +11,19 @@ pub enum InvoiceStatus {
     Defaulted, // Invoice payment is overdue/defaulted
 }
 
+/// Invoice category enumeration
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InvoiceCategory {
+    Services,      // Professional services
+    Products,      // Physical products
+    Consulting,    // Consulting services
+    Manufacturing, // Manufacturing services
+    Technology,    // Technology services/products
+    Healthcare,    // Healthcare services
+    Other,         // Other categories
+}
+
 /// Invoice rating structure
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -33,6 +46,8 @@ pub struct Invoice {
     pub status: InvoiceStatus,       // Current status of the invoice
     pub created_at: u64,             // Creation timestamp
     pub description: String,         // Invoice description/metadata
+    pub category: InvoiceCategory,   // Invoice category
+    pub tags: Vec<String>,           // Invoice tags for better discoverability
     pub funded_amount: i128,         // Amount funded by investors
     pub funded_at: Option<u64>,      // When the invoice was funded
     pub investor: Option<Address>,   // Address of the investor who funded
@@ -56,6 +71,8 @@ impl Invoice {
         currency: Address,
         due_date: u64,
         description: String,
+        category: InvoiceCategory,
+        tags: Vec<String>,
     ) -> Self {
         let id = Self::generate_unique_invoice_id(env);
         let created_at = env.ledger().timestamp();
@@ -69,6 +86,8 @@ impl Invoice {
             status: InvoiceStatus::Pending,
             created_at,
             description,
+            category,
+            tags,
             funded_amount: 0,
             funded_at: None,
             investor: None,
@@ -192,6 +211,70 @@ impl Invoice {
         } else {
             Some(self.ratings.iter().map(|r| r.rating).min().unwrap())
         }
+    }
+
+    /// Add a tag to the invoice
+    pub fn add_tag(&mut self, env: &Env, tag: String) -> Result<(), crate::errors::QuickLendXError> {
+        // Validate tag length (1-50 characters)
+        if tag.len() < 1 || tag.len() > 50 {
+            return Err(crate::errors::QuickLendXError::InvalidTag);
+        }
+
+        // Check tag limit (max 10 tags per invoice)
+        if self.tags.len() >= 10 {
+            return Err(crate::errors::QuickLendXError::TagLimitExceeded);
+        }
+
+        // Check if tag already exists
+        for existing_tag in self.tags.iter() {
+            if existing_tag == tag {
+                return Ok(()); // Tag already exists, no need to add
+            }
+        }
+
+        self.tags.push_back(tag);
+        Ok(())
+    }
+
+    /// Remove a tag from the invoice
+    pub fn remove_tag(&mut self, tag: String) -> Result<(), crate::errors::QuickLendXError> {
+        let mut new_tags = Vec::new(&self.tags.env());
+        let mut found = false;
+
+        for existing_tag in self.tags.iter() {
+            if existing_tag != tag {
+                new_tags.push_back(existing_tag.clone());
+            } else {
+                found = true;
+            }
+        }
+
+        if !found {
+            return Err(crate::errors::QuickLendXError::InvalidTag);
+        }
+
+        self.tags = new_tags;
+        Ok(())
+    }
+
+    /// Check if invoice has a specific tag
+    pub fn has_tag(&self, tag: String) -> bool {
+        for existing_tag in self.tags.iter() {
+            if existing_tag == tag {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Update the invoice category
+    pub fn update_category(&mut self, category: InvoiceCategory) {
+        self.category = category;
+    }
+
+    /// Get all tags as a vector
+    pub fn get_tags(&self) -> Vec<String> {
+        self.tags.clone()
     }
 }
 
@@ -337,5 +420,127 @@ impl InvoiceStorage {
             }
         }
         count
+    }
+
+    /// Get invoices by category
+    pub fn get_invoices_by_category(env: &Env, category: &InvoiceCategory) -> Vec<BytesN<32>> {
+        let mut category_invoices = vec![env];
+        let all_statuses = [
+            InvoiceStatus::Pending,
+            InvoiceStatus::Verified,
+            InvoiceStatus::Funded,
+            InvoiceStatus::Paid,
+            InvoiceStatus::Defaulted,
+        ];
+        
+        for status in all_statuses.iter() {
+            let invoices = Self::get_invoices_by_status(env, status);
+            for invoice_id in invoices.iter() {
+                if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                    if invoice.category == *category {
+                        category_invoices.push_back(invoice_id);
+                    }
+                }
+            }
+        }
+        category_invoices
+    }
+
+    /// Get invoices by category and status
+    pub fn get_invoices_by_category_and_status(
+        env: &Env,
+        category: &InvoiceCategory,
+        status: &InvoiceStatus,
+    ) -> Vec<BytesN<32>> {
+        let mut filtered_invoices = vec![env];
+        let invoices = Self::get_invoices_by_status(env, status);
+        
+        for invoice_id in invoices.iter() {
+            if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                if invoice.category == *category {
+                    filtered_invoices.push_back(invoice_id);
+                }
+            }
+        }
+        filtered_invoices
+    }
+
+    /// Get invoices by tag
+    pub fn get_invoices_by_tag(env: &Env, tag: &String) -> Vec<BytesN<32>> {
+        let mut tagged_invoices = vec![env];
+        let all_statuses = [
+            InvoiceStatus::Pending,
+            InvoiceStatus::Verified,
+            InvoiceStatus::Funded,
+            InvoiceStatus::Paid,
+            InvoiceStatus::Defaulted,
+        ];
+        
+        for status in all_statuses.iter() {
+            let invoices = Self::get_invoices_by_status(env, status);
+            for invoice_id in invoices.iter() {
+                if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                    if invoice.has_tag(tag.clone()) {
+                        tagged_invoices.push_back(invoice_id);
+                    }
+                }
+            }
+        }
+        tagged_invoices
+    }
+
+    /// Get invoices by multiple tags (AND logic - must have all tags)
+    pub fn get_invoices_by_tags(env: &Env, tags: &Vec<String>) -> Vec<BytesN<32>> {
+        let mut tagged_invoices = vec![env];
+        let all_statuses = [
+            InvoiceStatus::Pending,
+            InvoiceStatus::Verified,
+            InvoiceStatus::Funded,
+            InvoiceStatus::Paid,
+            InvoiceStatus::Defaulted,
+        ];
+        
+        for status in all_statuses.iter() {
+            let invoices = Self::get_invoices_by_status(env, status);
+            for invoice_id in invoices.iter() {
+                if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
+                    let mut has_all_tags = true;
+                    for tag in tags.iter() {
+                        if !invoice.has_tag(tag.clone()) {
+                            has_all_tags = false;
+                            break;
+                        }
+                    }
+                    if has_all_tags {
+                        tagged_invoices.push_back(invoice_id);
+                    }
+                }
+            }
+        }
+        tagged_invoices
+    }
+
+    /// Get invoice count by category
+    pub fn get_invoice_count_by_category(env: &Env, category: &InvoiceCategory) -> u32 {
+        Self::get_invoices_by_category(env, category).len() as u32
+    }
+
+    /// Get invoice count by tag
+    pub fn get_invoice_count_by_tag(env: &Env, tag: &String) -> u32 {
+        Self::get_invoices_by_tag(env, tag).len() as u32
+    }
+
+    /// Get all available categories
+    pub fn get_all_categories(env: &Env) -> Vec<InvoiceCategory> {
+        vec![
+            env,
+            InvoiceCategory::Services,
+            InvoiceCategory::Products,
+            InvoiceCategory::Consulting,
+            InvoiceCategory::Manufacturing,
+            InvoiceCategory::Technology,
+            InvoiceCategory::Healthcare,
+            InvoiceCategory::Other,
+        ]
     }
 }
