@@ -57,11 +57,17 @@ pub enum QuickLendXError {
     AuditIntegrityError = 1702,
     AuditQueryError = 1703,
 
-    // Notification errors (1800-1899)
-    NotificationNotFound = 1800,
-    NotificationBlocked = 1801,
-    InvalidNotificationStatus = 1802,
-    NotificationPreferencesNotFound = 1803,
+    // Category and Tag errors (1800-1899)
+    InvalidCategory = 1800,
+    CategoryNotFound = 1801,
+    InvalidTag = 1802,
+    TagLimitExceeded = 1803,
+
+    // Notification errors (1900-1999)
+    NotificationNotFound = 1900,
+    NotificationBlocked = 1901,
+    InvalidNotificationStatus = 1902,
+    NotificationPreferencesNotFound = 1903,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -102,6 +108,12 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::KYCNotFound => symbol_short!("KYC_NF"),
             QuickLendXError::InvalidKYCStatus => symbol_short!("KYC_IS"),
 
+            // Category and Tag errors
+            QuickLendXError::InvalidCategory => symbol_short!("INV_CAT"),
+            QuickLendXError::CategoryNotFound => symbol_short!("CAT_NF"),
+            QuickLendXError::InvalidTag => symbol_short!("INV_TAG"),
+            QuickLendXError::TagLimitExceeded => symbol_short!("TAG_LIM"),
+
             QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
             QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
             QuickLendXError::InvalidNotificationStatus => symbol_short!("NOT_IS"),
@@ -115,4 +127,5 @@ impl From<QuickLendXError> for Symbol {
         }
     }
 }
+
 
