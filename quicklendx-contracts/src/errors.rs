@@ -44,7 +44,6 @@ pub enum QuickLendXError {
     NotFunded = 1501,
     AlreadyRated = 1502,
     NotRater = 1503,
-
     // KYC/Verification errors (1600-1699, from main)
     BusinessNotVerified = 1600,
     KYCAlreadyPending = 1601,
@@ -52,11 +51,17 @@ pub enum QuickLendXError {
     KYCNotFound = 1603,
     InvalidKYCStatus = 1604,
 
-    // Notification errors (1700-1799)
-    NotificationNotFound = 1700,
-    NotificationBlocked = 1701,
-    InvalidNotificationStatus = 1702,
-    NotificationPreferencesNotFound = 1703,
+    // Audit errors (1700-1799)
+    AuditLogNotFound = 1700,
+    AuditValidationFailed = 1701,
+    AuditIntegrityError = 1702,
+    AuditQueryError = 1703,
+
+    // Notification errors (1800-1899)
+    NotificationNotFound = 1800,
+    NotificationBlocked = 1801,
+    InvalidNotificationStatus = 1802,
+    NotificationPreferencesNotFound = 1803,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -90,15 +95,24 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::NotFunded => symbol_short!("NOT_FD"),
             QuickLendXError::AlreadyRated => symbol_short!("ALR_RT"),
             QuickLendXError::NotRater => symbol_short!("NOT_RT"),
+
             QuickLendXError::BusinessNotVerified => symbol_short!("BUS_NV"),
             QuickLendXError::KYCAlreadyPending => symbol_short!("KYC_PD"),
             QuickLendXError::KYCAlreadyVerified => symbol_short!("KYC_VF"),
             QuickLendXError::KYCNotFound => symbol_short!("KYC_NF"),
             QuickLendXError::InvalidKYCStatus => symbol_short!("KYC_IS"),
+
             QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
             QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
             QuickLendXError::InvalidNotificationStatus => symbol_short!("NOT_IS"),
             QuickLendXError::NotificationPreferencesNotFound => symbol_short!("NP_NF"),
+
+            // Add to Symbol conversion
+            QuickLendXError::AuditLogNotFound => symbol_short!("AUD_NF"),
+            QuickLendXError::AuditValidationFailed => symbol_short!("AUD_VF"),
+            QuickLendXError::AuditIntegrityError => symbol_short!("AUD_IE"),
+            QuickLendXError::AuditQueryError => symbol_short!("AUD_QE"),
         }
     }
 }
+
