@@ -27,7 +27,7 @@ impl InvestmentStorage {
         use soroban_sdk::symbol_short;
 
         let timestamp = env.ledger().timestamp();
-        let counter_key = symbol_short!("inv_cnt");
+        let counter_key = symbol_short!("invst_cnt");
         let counter = env.storage().instance().get(&counter_key).unwrap_or(0u64);
         env.storage().instance().set(&counter_key, &(counter + 1));
 

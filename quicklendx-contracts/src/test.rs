@@ -1532,11 +1532,19 @@ fn test_audit_trail_creation() {
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
     
+    // Allow unauthenticated calls for test simplicity
+    env.mock_all_auths();
+
     let business = Address::generate(&env);
+    let admin = Address::generate(&env);
     let amount = 1000i128;
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
+    // Verify business setup
+    client.set_admin(&admin);
+    client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
+    client.verify_business(&admin, &business);
     
     // Upload invoice
     let invoice_id = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
@@ -1558,11 +1566,19 @@ fn test_audit_integrity_validation() {
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
     
+    // Allow unauthenticated calls for test simplicity
+    env.mock_all_auths();
+
     let business = Address::generate(&env);
+    let admin = Address::generate(&env);
     let amount = 1000i128;
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
+    // Verify business setup
+    client.set_admin(&admin);
+    client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
+    client.verify_business(&admin, &business);
     
     // Upload and verify invoice
     let invoice_id = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
@@ -1579,11 +1595,19 @@ fn test_audit_query_functionality() {
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
     
+    // Allow unauthenticated calls for test simplicity
+    env.mock_all_auths();
+
     let business = Address::generate(&env);
+    let admin = Address::generate(&env);
     let amount = 1000i128;
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
+    // Verify business setup
+    client.set_admin(&admin);
+    client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
+    client.verify_business(&admin, &business);
     
     // Create multiple invoices
     let invoice_id1 = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
@@ -1622,11 +1646,19 @@ fn test_audit_statistics() {
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
     
+    // Allow unauthenticated calls for test simplicity
+    env.mock_all_auths();
+
     let business = Address::generate(&env);
+    let admin = Address::generate(&env);
     let amount = 1000i128;
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
+    // Verify business setup
+    client.set_admin(&admin);
+    client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
+    client.verify_business(&admin, &business);
     
     // Create and process invoices
     let invoice_id = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));

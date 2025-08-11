@@ -42,7 +42,7 @@
                     "storage": [
                       {
                         "key": {
-                          "symbol": "inv_cnt"
+                          "symbol": "invst_cnt"
                         },
                         "val": {
                           "u64": 100

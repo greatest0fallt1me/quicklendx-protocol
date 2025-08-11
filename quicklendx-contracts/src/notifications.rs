@@ -316,7 +316,7 @@ impl NotificationSystem {
         env.storage()
             .instance()
             .get(&key)
-            .unwrap_or_else(|| vec![env])
+            .unwrap_or_else(|| Vec::new(env))
     }
 
     /// Get user notification preferences
