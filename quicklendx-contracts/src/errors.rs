@@ -39,12 +39,13 @@ pub enum QuickLendXError {
     InvalidStatus = 1401,
     OperationNotAllowed = 1402,
 
-    // Rating errors (1500-1599, from feat-invoice_rating_system)
+    // Rating errors (1500-1599)
     InvalidRating = 1500,
     NotFunded = 1501,
     AlreadyRated = 1502,
     NotRater = 1503,
-    // KYC/Verification errors (1600-1699, from main)
+
+    // KYC/Verification errors (1600-1699)
     BusinessNotVerified = 1600,
     KYCAlreadyPending = 1601,
     KYCAlreadyVerified = 1602,
@@ -63,11 +64,20 @@ pub enum QuickLendXError {
     InvalidTag = 1802,
     TagLimitExceeded = 1803,
 
-    // Notification errors (1900-1999)
-    NotificationNotFound = 1900,
-    NotificationBlocked = 1901,
-    InvalidNotificationStatus = 1902,
-    NotificationPreferencesNotFound = 1903,
+    // Dispute errors (1900-1999)
+    DisputeNotFound = 1900,
+    DisputeAlreadyExists = 1901,
+    DisputeNotAuthorized = 1902,
+    DisputeAlreadyResolved = 1903,
+    DisputeNotUnderReview = 1904,
+    InvalidDisputeReason = 1905,
+    InvalidDisputeEvidence = 1906,
+
+    // Notification errors (2000-2099) - Moved to avoid conflict
+    NotificationNotFound = 2000,
+    NotificationBlocked = 2001,
+    InvalidNotificationStatus = 2002,
+    NotificationPreferencesNotFound = 2003,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -101,31 +111,32 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::NotFunded => symbol_short!("NOT_FD"),
             QuickLendXError::AlreadyRated => symbol_short!("ALR_RT"),
             QuickLendXError::NotRater => symbol_short!("NOT_RT"),
-
             QuickLendXError::BusinessNotVerified => symbol_short!("BUS_NV"),
             QuickLendXError::KYCAlreadyPending => symbol_short!("KYC_PD"),
             QuickLendXError::KYCAlreadyVerified => symbol_short!("KYC_VF"),
             QuickLendXError::KYCNotFound => symbol_short!("KYC_NF"),
             QuickLendXError::InvalidKYCStatus => symbol_short!("KYC_IS"),
-
-            // Category and Tag errors
-            QuickLendXError::InvalidCategory => symbol_short!("INV_CAT"),
-            QuickLendXError::CategoryNotFound => symbol_short!("CAT_NF"),
-            QuickLendXError::InvalidTag => symbol_short!("INV_TAG"),
-            QuickLendXError::TagLimitExceeded => symbol_short!("TAG_LIM"),
-
-            QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
-            QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
-            QuickLendXError::InvalidNotificationStatus => symbol_short!("NOT_IS"),
-            QuickLendXError::NotificationPreferencesNotFound => symbol_short!("NP_NF"),
-
-            // Add to Symbol conversion
             QuickLendXError::AuditLogNotFound => symbol_short!("AUD_NF"),
             QuickLendXError::AuditValidationFailed => symbol_short!("AUD_VF"),
             QuickLendXError::AuditIntegrityError => symbol_short!("AUD_IE"),
             QuickLendXError::AuditQueryError => symbol_short!("AUD_QE"),
+            QuickLendXError::InvalidCategory => symbol_short!("INV_CAT"),
+            QuickLendXError::CategoryNotFound => symbol_short!("CAT_NF"),
+            QuickLendXError::InvalidTag => symbol_short!("INV_TAG"),
+            QuickLendXError::TagLimitExceeded => symbol_short!("TAG_LIM"),
+            // Dispute errors
+            QuickLendXError::DisputeNotFound => symbol_short!("DSP_NF"),
+            QuickLendXError::DisputeAlreadyExists => symbol_short!("DSP_EX"),
+            QuickLendXError::DisputeNotAuthorized => symbol_short!("DSP_NA"),
+            QuickLendXError::DisputeAlreadyResolved => symbol_short!("DSP_RS"),
+            QuickLendXError::DisputeNotUnderReview => symbol_short!("DSP_UR"),
+            QuickLendXError::InvalidDisputeReason => symbol_short!("DSP_RN"),
+            QuickLendXError::InvalidDisputeEvidence => symbol_short!("DSP_EV"),
+            // Notification errors
+            QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
+            QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
+            QuickLendXError::InvalidNotificationStatus => symbol_short!("NOT_IS"),
+            QuickLendXError::NotificationPreferencesNotFound => symbol_short!("NP_NF"),
         }
     }
 }
-
-
