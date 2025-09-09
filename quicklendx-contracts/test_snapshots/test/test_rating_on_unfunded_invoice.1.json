@@ -74,6 +74,18 @@
                             },
                             {
                               "key": {
+                                "symbol": "category"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "Services"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "created_at"
                               },
                               "val": {
@@ -94,6 +106,83 @@
                               },
                               "val": {
                                 "string": "Unfunded invoice"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "dispute"
+                              },
+                              "val": {
+                                "map": [
+                                  {
+                                    "key": {
+                                      "symbol": "created_at"
+                                    },
+                                    "val": {
+                                      "u64": 0
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "created_by"
+                                    },
+                                    "val": {
+                                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "evidence"
+                                    },
+                                    "val": {
+                                      "string": ""
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "reason"
+                                    },
+                                    "val": {
+                                      "string": ""
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "resolution"
+                                    },
+                                    "val": {
+                                      "string": ""
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "resolved_at"
+                                    },
+                                    "val": {
+                                      "u64": 0
+                                    }
+                                  },
+                                  {
+                                    "key": {
+                                      "symbol": "resolved_by"
+                                    },
+                                    "val": {
+                                      "address": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+                                    }
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "dispute_status"
+                              },
+                              "val": {
+                                "vec": [
+                                  {
+                                    "symbol": "None"
+                                  }
+                                ]
                               }
                             },
                             {
@@ -159,6 +248,14 @@
                                     "symbol": "Pending"
                                   }
                                 ]
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "tags"
+                              },
+                              "val": {
+                                "vec": []
                               }
                             },
                             {
