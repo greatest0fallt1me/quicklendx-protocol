@@ -25,13 +25,13 @@ pub enum DisputeStatus {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
-    pub created_by: Address, // Address of the party who created the dispute
-    pub created_at: u64,     // Timestamp when dispute was created
-    pub reason: String,      // Reason for the dispute
-    pub evidence: String,    // Evidence provided by the disputing party
-    pub resolution: Option<String>, // Resolution description (if resolved)
-    pub resolved_by: Option<Address>, // Address of the party who resolved the dispute
-    pub resolved_at: Option<u64>, // Timestamp when dispute was resolved
+    pub created_by: Address,        // Address of the party who created the dispute
+    pub created_at: u64,            // Timestamp when dispute was created
+    pub reason: String,             // Reason for the dispute
+    pub evidence: String,           // Evidence provided by the disputing party
+    pub resolution: String,         // Resolution description (empty if not resolved)
+    pub resolved_by: Address,       // Address of the party who resolved the dispute (zero address if not resolved)
+    pub resolved_at: u64,           // Timestamp when dispute was resolved (0 if not resolved)
 }
 
 /// Invoice category enumeration
@@ -79,7 +79,7 @@ pub struct Invoice {
     pub total_ratings: u32,            // Total number of ratings
     pub ratings: Vec<InvoiceRating>,   // List of all ratings
     pub dispute_status: DisputeStatus, // Current dispute status
-    pub dispute: Option<Dispute>,      // Dispute details if any
+    pub dispute: Dispute,      // Dispute details if any
 }
 
 // Use the main error enum from errors.rs
@@ -121,7 +121,15 @@ impl Invoice {
             total_ratings: 0,
             ratings: vec![env],
             dispute_status: DisputeStatus::None,
-            dispute: None,
+            dispute: Dispute {
+                created_by: Address::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"),
+                created_at: 0,
+                reason: String::from_str(env, ""),
+                evidence: String::from_str(env, ""),
+                resolution: String::from_str(env, ""),
+                resolved_by: Address::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"),
+                resolved_at: 0,
+            },
         };
 
         // Log invoice creation
