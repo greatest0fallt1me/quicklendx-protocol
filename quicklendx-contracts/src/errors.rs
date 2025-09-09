@@ -59,8 +59,6 @@ pub enum QuickLendXError {
     AuditQueryError = 1703,
 
     // Category and Tag errors (1800-1899)
-    InvalidCategory = 1800,
-    CategoryNotFound = 1801,
     InvalidTag = 1802,
     TagLimitExceeded = 1803,
 
@@ -73,11 +71,9 @@ pub enum QuickLendXError {
     InvalidDisputeReason = 1905,
     InvalidDisputeEvidence = 1906,
 
-    // Notification errors (2000-2099) - Moved to avoid conflict
+    // Notification errors
     NotificationNotFound = 2000,
     NotificationBlocked = 2001,
-    InvalidNotificationStatus = 2002,
-    NotificationPreferencesNotFound = 2003,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -120,8 +116,6 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::AuditValidationFailed => symbol_short!("AUD_VF"),
             QuickLendXError::AuditIntegrityError => symbol_short!("AUD_IE"),
             QuickLendXError::AuditQueryError => symbol_short!("AUD_QE"),
-            QuickLendXError::InvalidCategory => symbol_short!("INV_CAT"),
-            QuickLendXError::CategoryNotFound => symbol_short!("CAT_NF"),
             QuickLendXError::InvalidTag => symbol_short!("INV_TAG"),
             QuickLendXError::TagLimitExceeded => symbol_short!("TAG_LIM"),
             // Dispute errors
@@ -135,8 +129,6 @@ impl From<QuickLendXError> for Symbol {
             // Notification errors
             QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
             QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
-            QuickLendXError::InvalidNotificationStatus => symbol_short!("NOT_IS"),
-            QuickLendXError::NotificationPreferencesNotFound => symbol_short!("NP_NF"),
         }
     }
 }
