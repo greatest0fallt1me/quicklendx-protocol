@@ -371,6 +371,18 @@
                       },
                       {
                         "key": {
+                          "symbol": "all_aud"
+                        },
+                        "val": {
+                          "vec": [
+                            {
+                              "bytes": "ad1f00000000000000000000000000000000000000001f1f1f1f1f1f1f1f1f1f"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
                           "symbol": "aud_cnt"
                         },
                         "val": {

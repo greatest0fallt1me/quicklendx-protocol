@@ -1,5 +1,5 @@
-use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Symbol, Vec};
 use crate::errors::QuickLendXError;
+use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Vec};
 
 #[contracttype]
 pub enum BusinessVerificationStatus {
@@ -338,7 +338,9 @@ fn emit_business_rejected(env: &Env, business: &Address, admin: &Address) {
 }
 
 /// Validate invoice category
-pub fn validate_invoice_category(category: &crate::invoice::InvoiceCategory) -> Result<(), QuickLendXError> {
+pub fn validate_invoice_category(
+    category: &crate::invoice::InvoiceCategory,
+) -> Result<(), QuickLendXError> {
     // All categories are valid as they are defined in the enum
     // This function can be extended to add additional validation logic if needed
     match category {
