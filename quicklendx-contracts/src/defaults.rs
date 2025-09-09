@@ -64,14 +64,14 @@ pub fn create_dispute(
         created_at: env.ledger().timestamp(),
         reason: reason.clone(),
         evidence,
-        resolution: None,
-        resolved_by: None,
-        resolved_at: None,
+        resolution: String::from_str(env, ""),
+        resolved_by: Address::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"),
+        resolved_at: 0,
     };
     
     // Update invoice with dispute
     invoice.dispute_status = DisputeStatus::Disputed;
-    invoice.dispute = Some(dispute);
+    invoice.dispute = dispute;
     
     // Update invoice in storage
     InvoiceStorage::update_invoice(env, &invoice);
@@ -133,11 +133,10 @@ pub fn resolve_dispute(
     }
     
     // Update dispute with resolution
-    if let Some(mut dispute) = invoice.dispute.clone() {
-        dispute.resolution = Some(resolution.clone());
-        dispute.resolved_by = Some(resolver.clone());
-        dispute.resolved_at = Some(env.ledger().timestamp());
-        invoice.dispute = Some(dispute);
+    if invoice.dispute_status != DisputeStatus::None {
+        invoice.dispute.resolution = resolution.clone();
+        invoice.dispute.resolved_by = resolver.clone();
+        invoice.dispute.resolved_at = env.ledger().timestamp();
     }
     
     // Update dispute status
@@ -160,7 +159,11 @@ pub fn get_dispute_details(
     let invoice = InvoiceStorage::get_invoice(env, invoice_id)
         .ok_or(QuickLendXError::InvoiceNotFound)?;
     
-    Ok(invoice.dispute)
+    if invoice.dispute_status != DisputeStatus::None {
+        Ok(Some(invoice.dispute))
+    } else {
+        Ok(None)
+    }
 }
 
 /// Get all invoices with disputes
