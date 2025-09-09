@@ -1,5 +1,5 @@
 use crate::errors::QuickLendXError;
-use crate::invoice::{Invoice};
+use crate::invoice::Invoice;
 use soroban_sdk::{contracttype, symbol_short, BytesN, Env, String, Vec};
 
 #[contracttype]

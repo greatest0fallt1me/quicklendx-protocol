@@ -25,13 +25,13 @@ pub enum DisputeStatus {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
-    pub created_by: Address,        // Address of the party who created the dispute
-    pub created_at: u64,            // Timestamp when dispute was created
-    pub reason: String,             // Reason for the dispute
-    pub evidence: String,           // Evidence provided by the disputing party
+    pub created_by: Address, // Address of the party who created the dispute
+    pub created_at: u64,     // Timestamp when dispute was created
+    pub reason: String,      // Reason for the dispute
+    pub evidence: String,    // Evidence provided by the disputing party
     pub resolution: Option<String>, // Resolution description (if resolved)
     pub resolved_by: Option<Address>, // Address of the party who resolved the dispute
-    pub resolved_at: Option<u64>,   // Timestamp when dispute was resolved
+    pub resolved_at: Option<u64>, // Timestamp when dispute was resolved
 }
 
 /// Invoice category enumeration
@@ -61,31 +61,31 @@ pub struct InvoiceRating {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Invoice {
-    pub id: BytesN<32>,              // Unique invoice identifier
-    pub business: Address,           // Business that uploaded the invoice
-    pub amount: i128,                // Total invoice amount
-    pub currency: Address,           // Currency token address (XLM = Address::random())
-    pub due_date: u64,               // Due date timestamp
-    pub status: InvoiceStatus,       // Current status of the invoice
-    pub created_at: u64,             // Creation timestamp
-    pub description: String,         // Invoice description/metadata
-    pub category: InvoiceCategory,   // Invoice category
-    pub tags: Vec<String>,           // Invoice tags for better discoverability
-    pub funded_amount: i128,         // Amount funded by investors
-    pub funded_at: Option<u64>,      // When the invoice was funded
-    pub investor: Option<Address>,   // Address of the investor who funded
-    pub settled_at: Option<u64>,     // When the invoice was settled
-    pub average_rating: Option<u32>, // Average rating (1-5)
-    pub total_ratings: u32,          // Total number of ratings
-    pub ratings: Vec<InvoiceRating>, // List of all ratings
+    pub id: BytesN<32>,                // Unique invoice identifier
+    pub business: Address,             // Business that uploaded the invoice
+    pub amount: i128,                  // Total invoice amount
+    pub currency: Address,             // Currency token address (XLM = Address::random())
+    pub due_date: u64,                 // Due date timestamp
+    pub status: InvoiceStatus,         // Current status of the invoice
+    pub created_at: u64,               // Creation timestamp
+    pub description: String,           // Invoice description/metadata
+    pub category: InvoiceCategory,     // Invoice category
+    pub tags: Vec<String>,             // Invoice tags for better discoverability
+    pub funded_amount: i128,           // Amount funded by investors
+    pub funded_at: Option<u64>,        // When the invoice was funded
+    pub investor: Option<Address>,     // Address of the investor who funded
+    pub settled_at: Option<u64>,       // When the invoice was settled
+    pub average_rating: Option<u32>,   // Average rating (1-5)
+    pub total_ratings: u32,            // Total number of ratings
+    pub ratings: Vec<InvoiceRating>,   // List of all ratings
     pub dispute_status: DisputeStatus, // Current dispute status
-    pub dispute: Option<Dispute>,    // Dispute details if any
+    pub dispute: Option<Dispute>,      // Dispute details if any
 }
 
 // Use the main error enum from errors.rs
 use crate::errors::QuickLendXError;
 
-use crate::audit::{log_invoice_created, log_invoice_status_change, log_invoice_funded};
+use crate::audit::{log_invoice_created, log_invoice_funded, log_invoice_status_change};
 
 impl Invoice {
     /// Create a new invoice with audit logging
@@ -123,10 +123,10 @@ impl Invoice {
             dispute_status: DisputeStatus::None,
             dispute: None,
         };
-        
+
         // Log invoice creation
         log_invoice_created(env, &invoice);
-        
+
         invoice
     }
 
@@ -137,13 +137,13 @@ impl Invoice {
         let counter_key = symbol_short!("inv_cnt");
         let counter: u32 = env.storage().instance().get(&counter_key).unwrap_or(0);
         env.storage().instance().set(&counter_key, &(counter + 1));
-        
+
         // Create a unique ID from timestamp, sequence, and counter
         let mut id_bytes = [0u8; 32];
         id_bytes[0..8].copy_from_slice(&timestamp.to_be_bytes());
         id_bytes[8..12].copy_from_slice(&sequence.to_be_bytes());
         id_bytes[12..16].copy_from_slice(&counter.to_be_bytes());
-        
+
         BytesN::from_array(env, &id_bytes)
     }
 
@@ -158,15 +158,27 @@ impl Invoice {
     }
 
     /// Mark invoice as funded with audit logging
-    pub fn mark_as_funded(&mut self, env: &Env, investor: Address, funded_amount: i128, timestamp: u64) {
+    pub fn mark_as_funded(
+        &mut self,
+        env: &Env,
+        investor: Address,
+        funded_amount: i128,
+        timestamp: u64,
+    ) {
         let old_status = self.status.clone();
         self.status = InvoiceStatus::Funded;
         self.funded_amount = funded_amount;
         self.funded_at = Some(timestamp);
         self.investor = Some(investor.clone());
-        
+
         // Log status change and funding
-        log_invoice_status_change(env, self.id.clone(), investor.clone(), old_status, self.status.clone());
+        log_invoice_status_change(
+            env,
+            self.id.clone(),
+            investor.clone(),
+            old_status,
+            self.status.clone(),
+        );
         log_invoice_funded(env, self.id.clone(), investor, funded_amount);
     }
 
@@ -175,7 +187,7 @@ impl Invoice {
         let old_status = self.status.clone();
         self.status = InvoiceStatus::Paid;
         self.settled_at = Some(timestamp);
-        
+
         // Log status change
         log_invoice_status_change(env, self.id.clone(), actor, old_status, self.status.clone());
     }
@@ -184,7 +196,7 @@ impl Invoice {
     pub fn verify(&mut self, env: &Env, actor: Address) {
         let old_status = self.status.clone();
         self.status = InvoiceStatus::Verified;
-        
+
         // Log status change
         log_invoice_status_change(env, self.id.clone(), actor, old_status, self.status.clone());
     }
@@ -283,7 +295,11 @@ impl Invoice {
     }
 
     /// Add a tag to the invoice
-    pub fn add_tag(&mut self, env: &Env, tag: String) -> Result<(), crate::errors::QuickLendXError> {
+    pub fn add_tag(
+        &mut self,
+        env: &Env,
+        tag: String,
+    ) -> Result<(), crate::errors::QuickLendXError> {
         // Validate tag length (1-50 characters)
         if tag.len() < 1 || tag.len() > 50 {
             return Err(crate::errors::QuickLendXError::InvalidTag);
@@ -511,7 +527,7 @@ impl InvoiceStorage {
             InvoiceStatus::Paid,
             InvoiceStatus::Defaulted,
         ];
-        
+
         for status in all_statuses.iter() {
             let invoices = Self::get_invoices_by_status(env, status);
             for invoice_id in invoices.iter() {
@@ -533,7 +549,7 @@ impl InvoiceStorage {
     ) -> Vec<BytesN<32>> {
         let mut filtered_invoices = vec![env];
         let invoices = Self::get_invoices_by_status(env, status);
-        
+
         for invoice_id in invoices.iter() {
             if let Some(invoice) = Self::get_invoice(env, &invoice_id) {
                 if invoice.category == *category {
@@ -554,7 +570,7 @@ impl InvoiceStorage {
             InvoiceStatus::Paid,
             InvoiceStatus::Defaulted,
         ];
-        
+
         for status in all_statuses.iter() {
             let invoices = Self::get_invoices_by_status(env, status);
             for invoice_id in invoices.iter() {
@@ -578,7 +594,7 @@ impl InvoiceStorage {
             InvoiceStatus::Paid,
             InvoiceStatus::Defaulted,
         ];
-        
+
         for status in all_statuses.iter() {
             let invoices = Self::get_invoices_by_status(env, status);
             for invoice_id in invoices.iter() {

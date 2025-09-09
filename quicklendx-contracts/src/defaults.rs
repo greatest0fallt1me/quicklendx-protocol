@@ -1,7 +1,9 @@
 use crate::errors::QuickLendXError;
-use crate::events::{emit_invoice_defaulted, emit_dispute_created, emit_dispute_under_review, emit_dispute_resolved};
+use crate::events::{
+    emit_dispute_created, emit_dispute_resolved, emit_dispute_under_review, emit_invoice_defaulted,
+};
 use crate::investment::{Investment, InvestmentStatus, InvestmentStorage};
-use crate::invoice::{Invoice, InvoiceStatus, InvoiceStorage, DisputeStatus, Dispute};
+use crate::invoice::{Dispute, DisputeStatus, Invoice, InvoiceStatus, InvoiceStorage};
 use crate::notifications::NotificationSystem;
 use soroban_sdk::{Address, BytesN, Env, String, Vec};
 
@@ -34,15 +36,15 @@ pub fn create_dispute(
     evidence: String,
 ) -> Result<(), QuickLendXError> {
     creator.require_auth();
-    
-    let mut invoice = InvoiceStorage::get_invoice(env, invoice_id)
-        .ok_or(QuickLendXError::InvoiceNotFound)?;
-    
+
+    let mut invoice =
+        InvoiceStorage::get_invoice(env, invoice_id).ok_or(QuickLendXError::InvoiceNotFound)?;
+
     // Check if dispute already exists
     if invoice.dispute_status != DisputeStatus::None {
         return Err(QuickLendXError::DisputeAlreadyExists);
     }
-    
+
     // Validate creator has stake in invoice (business or investor)
     if creator != &invoice.business {
         if let Some(investor) = &invoice.investor {
@@ -53,16 +55,16 @@ pub fn create_dispute(
             return Err(QuickLendXError::DisputeNotAuthorized);
         }
     }
-    
+
     // Validate reason and evidence
     if reason.len() == 0 || reason.len() > 500 {
         return Err(QuickLendXError::InvalidDisputeReason);
     }
-    
+
     if evidence.len() == 0 || evidence.len() > 1000 {
         return Err(QuickLendXError::InvalidDisputeEvidence);
     }
-    
+
     // Create dispute
     let dispute = Dispute {
         created_by: creator.clone(),
@@ -73,17 +75,17 @@ pub fn create_dispute(
         resolved_by: None,
         resolved_at: None,
     };
-    
+
     // Update invoice with dispute
     invoice.dispute_status = DisputeStatus::Disputed;
     invoice.dispute = Some(dispute);
-    
+
     // Update invoice in storage
     InvoiceStorage::update_invoice(env, &invoice);
-    
+
     // Emit dispute created event
     emit_dispute_created(env, invoice_id, creator, &reason);
-    
+
     Ok(())
 }
 
@@ -94,24 +96,24 @@ pub fn put_dispute_under_review(
     reviewer: &Address,
 ) -> Result<(), QuickLendXError> {
     reviewer.require_auth();
-    
-    let mut invoice = InvoiceStorage::get_invoice(env, invoice_id)
-        .ok_or(QuickLendXError::InvoiceNotFound)?;
-    
+
+    let mut invoice =
+        InvoiceStorage::get_invoice(env, invoice_id).ok_or(QuickLendXError::InvoiceNotFound)?;
+
     // Check if dispute exists and is in disputed status
     if invoice.dispute_status != DisputeStatus::Disputed {
         return Err(QuickLendXError::DisputeNotFound);
     }
-    
+
     // Update dispute status
     invoice.dispute_status = DisputeStatus::UnderReview;
-    
+
     // Update invoice in storage
     InvoiceStorage::update_invoice(env, &invoice);
-    
+
     // Emit dispute under review event
     emit_dispute_under_review(env, invoice_id, reviewer);
-    
+
     Ok(())
 }
 
@@ -123,20 +125,20 @@ pub fn resolve_dispute(
     resolution: String,
 ) -> Result<(), QuickLendXError> {
     resolver.require_auth();
-    
-    let mut invoice = InvoiceStorage::get_invoice(env, invoice_id)
-        .ok_or(QuickLendXError::InvoiceNotFound)?;
-    
+
+    let mut invoice =
+        InvoiceStorage::get_invoice(env, invoice_id).ok_or(QuickLendXError::InvoiceNotFound)?;
+
     // Check if dispute exists and is under review
     if invoice.dispute_status != DisputeStatus::UnderReview {
         return Err(QuickLendXError::DisputeNotUnderReview);
     }
-    
+
     // Validate resolution
     if resolution.len() == 0 || resolution.len() > 500 {
         return Err(QuickLendXError::InvalidDisputeReason);
     }
-    
+
     // Update dispute with resolution
     if let Some(mut dispute) = invoice.dispute.clone() {
         dispute.resolution = Some(resolution.clone());
@@ -144,16 +146,16 @@ pub fn resolve_dispute(
         dispute.resolved_at = Some(env.ledger().timestamp());
         invoice.dispute = Some(dispute);
     }
-    
+
     // Update dispute status
     invoice.dispute_status = DisputeStatus::Resolved;
-    
+
     // Update invoice in storage
     InvoiceStorage::update_invoice(env, &invoice);
-    
+
     // Emit dispute resolved event
     emit_dispute_resolved(env, invoice_id, resolver, &resolution);
-    
+
     Ok(())
 }
 
@@ -162,16 +164,16 @@ pub fn get_dispute_details(
     env: &Env,
     invoice_id: &BytesN<32>,
 ) -> Result<Option<Dispute>, QuickLendXError> {
-    let invoice = InvoiceStorage::get_invoice(env, invoice_id)
-        .ok_or(QuickLendXError::InvoiceNotFound)?;
-    
+    let invoice =
+        InvoiceStorage::get_invoice(env, invoice_id).ok_or(QuickLendXError::InvoiceNotFound)?;
+
     Ok(invoice.dispute)
 }
 
 /// Get all invoices with disputes
 pub fn get_invoices_with_disputes(env: &Env) -> Vec<BytesN<32>> {
     let mut disputed_invoices = Vec::new(env);
-    
+
     // Check all invoice statuses for disputes
     let all_statuses = [
         InvoiceStatus::Pending,
@@ -180,7 +182,7 @@ pub fn get_invoices_with_disputes(env: &Env) -> Vec<BytesN<32>> {
         InvoiceStatus::Paid,
         InvoiceStatus::Defaulted,
     ];
-    
+
     for status in all_statuses.iter() {
         let invoices = InvoiceStorage::get_invoices_by_status(env, status);
         for invoice_id in invoices.iter() {
@@ -191,17 +193,14 @@ pub fn get_invoices_with_disputes(env: &Env) -> Vec<BytesN<32>> {
             }
         }
     }
-    
+
     disputed_invoices
 }
 
 /// Get invoices by dispute status
-pub fn get_invoices_by_dispute_status(
-    env: &Env,
-    dispute_status: DisputeStatus,
-) -> Vec<BytesN<32>> {
+pub fn get_invoices_by_dispute_status(env: &Env, dispute_status: DisputeStatus) -> Vec<BytesN<32>> {
     let mut filtered_invoices = Vec::new(env);
-    
+
     // Check all invoice statuses for specific dispute status
     let all_statuses = [
         InvoiceStatus::Pending,
@@ -210,7 +209,7 @@ pub fn get_invoices_by_dispute_status(
         InvoiceStatus::Paid,
         InvoiceStatus::Defaulted,
     ];
-    
+
     for status in all_statuses.iter() {
         let invoices = InvoiceStorage::get_invoices_by_status(env, status);
         for invoice_id in invoices.iter() {
@@ -221,6 +220,6 @@ pub fn get_invoices_by_dispute_status(
             }
         }
     }
-    
+
     filtered_invoices
 }

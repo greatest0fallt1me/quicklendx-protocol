@@ -1,13 +1,10 @@
 use super::*;
-use soroban_sdk::{
-    testutils::{Address as _, },
-    Address, BytesN, Env, String, Vec,
-};
 use crate::audit::{
-    AuditStorage, AuditQueryFilter, AuditOperation, AuditOperationFilter, log_invoice_operation
+    log_invoice_operation, AuditOperation, AuditOperationFilter, AuditQueryFilter, AuditStorage,
 };
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
 // Merged imports from both branches
-use crate::invoice::{InvoiceCategory, DisputeStatus, Dispute};
+use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory};
 
 #[test]
 fn test_store_invoice() {
@@ -21,7 +18,15 @@ fn test_store_invoice() {
     let due_date = env.ledger().timestamp() + 86400; // 1 day from now
     let description = String::from_str(&env, "Test invoice for services");
 
-    let invoice_id = client.store_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
+    let invoice_id = client.store_invoice(
+        &business,
+        &amount,
+        &currency,
+        &due_date,
+        &description,
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
 
     // Verify invoice was stored
     let invoice = client.get_invoice(&invoice_id);
@@ -1531,7 +1536,7 @@ fn test_audit_trail_creation() {
     let env = Env::default();
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
-    
+
     // Allow unauthenticated calls for test simplicity
     env.mock_all_auths();
 
@@ -1545,14 +1550,22 @@ fn test_audit_trail_creation() {
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
-    
+
     // Upload invoice
-    let invoice_id = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
-    
+    let invoice_id = client.upload_invoice(
+        &business,
+        &amount,
+        &currency,
+        &due_date,
+        &description,
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
     // Check audit trail was created
     let audit_trail = client.get_invoice_audit_trail(&invoice_id);
     assert!(!audit_trail.is_empty());
-    
+
     // Verify audit entry details
     let audit_entry = client.get_audit_entry(&audit_trail.get(0).unwrap());
     assert_eq!(audit_entry.invoice_id, invoice_id);
@@ -1565,7 +1578,7 @@ fn test_audit_integrity_validation() {
     let env = Env::default();
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
-    
+
     // Allow unauthenticated calls for test simplicity
     env.mock_all_auths();
 
@@ -1579,11 +1592,19 @@ fn test_audit_integrity_validation() {
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
-    
+
     // Upload and verify invoice
-    let invoice_id = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
+    let invoice_id = client.upload_invoice(
+        &business,
+        &amount,
+        &currency,
+        &due_date,
+        &description,
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
     client.verify_invoice(&invoice_id);
-    
+
     // Validate audit integrity
     let is_valid = client.validate_invoice_audit_integrity(&invoice_id);
     assert!(is_valid);
@@ -1594,7 +1615,7 @@ fn test_audit_query_functionality() {
     let env = Env::default();
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
-    
+
     // Allow unauthenticated calls for test simplicity
     env.mock_all_auths();
 
@@ -1608,12 +1629,28 @@ fn test_audit_query_functionality() {
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
-    
+
     // Create multiple invoices
-    let invoice_id1 = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
+    let invoice_id1 = client.upload_invoice(
+        &business,
+        &amount,
+        &currency,
+        &due_date,
+        &description,
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
     let amount2 = amount * 2;
-    let invoice_id2 = client.upload_invoice(&business, &amount2, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
-    
+    let invoice_id2 = client.upload_invoice(
+        &business,
+        &amount2,
+        &currency,
+        &due_date,
+        &description,
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
     // Query by operation type
     let filter = AuditQueryFilter {
         invoice_id: None,
@@ -1622,10 +1659,10 @@ fn test_audit_query_functionality() {
         start_timestamp: None,
         end_timestamp: None,
     };
-    
+
     let results = client.query_audit_logs(&filter, &10);
     assert_eq!(results.len(), 2);
-    
+
     // Query by specific invoice
     let filter = AuditQueryFilter {
         invoice_id: Some(invoice_id1.clone()),
@@ -1634,7 +1671,7 @@ fn test_audit_query_functionality() {
         start_timestamp: None,
         end_timestamp: None,
     };
-    
+
     let results = client.query_audit_logs(&filter, &10);
     assert!(!results.is_empty());
     assert_eq!(results.get(0).unwrap().invoice_id, invoice_id1);
@@ -1645,7 +1682,7 @@ fn test_audit_statistics() {
     let env = Env::default();
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
-    
+
     // Allow unauthenticated calls for test simplicity
     env.mock_all_auths();
 
@@ -1659,11 +1696,19 @@ fn test_audit_statistics() {
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
-    
+
     // Create and process invoices
-    let invoice_id = client.upload_invoice(&business, &amount, &currency, &due_date, &description, &InvoiceCategory::Services, &Vec::new(&env));
+    let invoice_id = client.upload_invoice(
+        &business,
+        &amount,
+        &currency,
+        &due_date,
+        &description,
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
     client.verify_invoice(&invoice_id);
-    
+
     // Get audit statistics
     let stats = client.get_audit_stats();
     assert!(stats.total_entries > 0);
@@ -1970,7 +2015,6 @@ fn test_overdue_invoice_notifications() {
     assert!(overdue_count >= 0);
 }
 
-
 // Dispute Resolution System Tests (from main)
 
 #[test]
@@ -2000,13 +2044,8 @@ fn test_create_dispute() {
     // Create dispute as business
     let reason = String::from_str(&env, "Payment not received");
     let evidence = String::from_str(&env, "Bank statement showing no payment");
-    
-    client.create_dispute(
-        &invoice_id,
-        &business,
-        &reason,
-        &evidence,
-    );
+
+    client.create_dispute(&invoice_id, &business, &reason, &evidence);
 
     // Verify dispute was created
     let dispute_status = client.get_invoice_dispute_status(&invoice_id);
@@ -2014,7 +2053,7 @@ fn test_create_dispute() {
 
     let dispute_details = client.get_dispute_details(&invoice_id);
     assert!(dispute_details.is_some());
-    
+
     let dispute = dispute_details.unwrap();
     assert_eq!(dispute.created_by, business);
     assert_eq!(dispute.reason, reason);
@@ -2046,26 +2085,16 @@ fn test_create_dispute_as_investor() {
         &Vec::new(&env),
     );
     client.verify_invoice(&invoice_id);
-    
+
     // Place and accept bid
-    let bid_id = client.place_bid(
-        &investor,
-        &invoice_id,
-        &amount,
-        &(amount + 100),
-    );
+    let bid_id = client.place_bid(&investor, &invoice_id, &amount, &(amount + 100));
     client.accept_bid(&invoice_id, &bid_id);
 
     // Create dispute as investor
     let reason = String::from_str(&env, "Invoice details are incorrect");
     let evidence = String::from_str(&env, "Original contract shows different terms");
-    
-    client.create_dispute(
-        &invoice_id,
-        &investor,
-        &reason,
-        &evidence,
-    );
+
+    client.create_dispute(&invoice_id, &investor, &reason, &evidence);
 
     // Verify dispute was created
     let dispute_status = client.get_invoice_dispute_status(&invoice_id);
@@ -2073,7 +2102,7 @@ fn test_create_dispute_as_investor() {
 
     let dispute_details = client.get_dispute_details(&invoice_id);
     assert!(dispute_details.is_some());
-    
+
     let dispute = dispute_details.unwrap();
     assert_eq!(dispute.created_by, investor);
     assert_eq!(dispute.reason, reason);
@@ -2108,14 +2137,9 @@ fn test_unauthorized_dispute_creation() {
     // Try to create dispute as unauthorized party
     let reason = String::from_str(&env, "Invalid dispute");
     let evidence = String::from_str(&env, "Invalid evidence");
-    
-    let result = client.try_create_dispute(
-        &invoice_id,
-        &unauthorized,
-        &reason,
-        &evidence,
-    );
-    
+
+    let result = client.try_create_dispute(&invoice_id, &unauthorized, &reason, &evidence);
+
     assert!(result.is_err());
 }
 
@@ -2146,25 +2170,15 @@ fn test_duplicate_dispute_prevention() {
     // Create first dispute
     let reason1 = String::from_str(&env, "First dispute");
     let evidence1 = String::from_str(&env, "First evidence");
-    
-    client.create_dispute(
-        &invoice_id,
-        &business,
-        &reason1,
-        &evidence1,
-    );
+
+    client.create_dispute(&invoice_id, &business, &reason1, &evidence1);
 
     // Try to create second dispute
     let reason2 = String::from_str(&env, "Second dispute");
     let evidence2 = String::from_str(&env, "Second evidence");
-    
-    let result = client.try_create_dispute(
-        &invoice_id,
-        &business,
-        &reason2,
-        &evidence2,
-    );
-    
+
+    let result = client.try_create_dispute(&invoice_id, &business, &reason2, &evidence2);
+
     assert!(result.is_err());
 }
 
@@ -2195,22 +2209,14 @@ fn test_dispute_under_review() {
         &Vec::new(&env),
     );
     client.verify_invoice(&invoice_id);
-    
+
     let reason = String::from_str(&env, "Payment issue");
     let evidence = String::from_str(&env, "Payment evidence");
-    
-    client.create_dispute(
-        &invoice_id,
-        &business,
-        &reason,
-        &evidence,
-    );
+
+    client.create_dispute(&invoice_id, &business, &reason, &evidence);
 
     // Put dispute under review
-    client.put_dispute_under_review(
-        &invoice_id,
-        &admin,
-    );
+    client.put_dispute_under_review(&invoice_id, &admin);
 
     // Verify dispute status
     let dispute_status = client.get_invoice_dispute_status(&invoice_id);
@@ -2244,30 +2250,21 @@ fn test_resolve_dispute() {
         &Vec::new(&env),
     );
     client.verify_invoice(&invoice_id);
-    
+
     let reason = String::from_str(&env, "Payment issue");
     let evidence = String::from_str(&env, "Payment evidence");
-    
-    client.create_dispute(
-        &invoice_id,
-        &business,
-        &reason,
-        &evidence,
-    );
+
+    client.create_dispute(&invoice_id, &business, &reason, &evidence);
 
     // Put dispute under review
-    client.put_dispute_under_review(
-        &invoice_id,
-        &admin,
-    );
+    client.put_dispute_under_review(&invoice_id, &admin);
 
     // Resolve dispute
-    let resolution = String::from_str(&env, "Payment confirmed, dispute resolved in favor of business");
-    client.resolve_dispute(
-        &invoice_id,
-        &admin,
-        &resolution,
+    let resolution = String::from_str(
+        &env,
+        "Payment confirmed, dispute resolved in favor of business",
     );
+    client.resolve_dispute(&invoice_id, &admin, &resolution);
 
     // Verify dispute is resolved
     let dispute_status = client.get_invoice_dispute_status(&invoice_id);
@@ -2275,7 +2272,7 @@ fn test_resolve_dispute() {
 
     let dispute_details = client.get_dispute_details(&invoice_id);
     assert!(dispute_details.is_some());
-    
+
     let dispute = dispute_details.unwrap();
     assert_eq!(dispute.resolution.unwrap(), resolution);
     assert_eq!(dispute.resolved_by.unwrap(), admin);
@@ -2314,27 +2311,17 @@ fn test_get_invoices_with_disputes() {
         &InvoiceCategory::Services,
         &Vec::new(&env),
     );
-    
+
     client.verify_invoice(&invoice_id1);
     client.verify_invoice(&invoice_id2);
 
     // Create disputes
     let reason = String::from_str(&env, "Payment issue");
     let evidence = String::from_str(&env, "Payment evidence");
-    
-    client.create_dispute(
-        &invoice_id1,
-        &business1,
-        &reason,
-        &evidence,
-    );
-    
-    client.create_dispute(
-        &invoice_id2,
-        &business2,
-        &reason,
-        &evidence,
-    );
+
+    client.create_dispute(&invoice_id1, &business1, &reason, &evidence);
+
+    client.create_dispute(&invoice_id2, &business2, &reason, &evidence);
 
     // Get all invoices with disputes
     let disputed_invoices = client.get_invoices_with_disputes();
@@ -2370,16 +2357,11 @@ fn test_get_invoices_by_dispute_status() {
         &Vec::new(&env),
     );
     client.verify_invoice(&invoice_id);
-    
+
     let reason = String::from_str(&env, "Payment issue");
     let evidence = String::from_str(&env, "Payment evidence");
-    
-    client.create_dispute(
-        &invoice_id,
-        &business,
-        &reason,
-        &evidence,
-    );
+
+    client.create_dispute(&invoice_id, &business, &reason, &evidence);
 
     // Get invoices with disputed status
     let disputed_invoices = client.get_invoices_by_dispute_status(&DisputeStatus::Disputed);
@@ -2387,10 +2369,7 @@ fn test_get_invoices_by_dispute_status() {
     assert_eq!(disputed_invoices.get(0).unwrap(), invoice_id);
 
     // Put under review
-    client.put_dispute_under_review(
-        &invoice_id,
-        &admin,
-    );
+    client.put_dispute_under_review(&invoice_id, &admin);
 
     // Get invoices with under review status
     let under_review_invoices = client.get_invoices_by_dispute_status(&DisputeStatus::UnderReview);
@@ -2399,11 +2378,7 @@ fn test_get_invoices_by_dispute_status() {
 
     // Resolve dispute
     let resolution = String::from_str(&env, "Dispute resolved");
-    client.resolve_dispute(
-        &invoice_id,
-        &admin,
-        &resolution,
-    );
+    client.resolve_dispute(&invoice_id, &admin, &resolution);
 
     // Get invoices with resolved status
     let resolved_invoices = client.get_invoices_by_dispute_status(&DisputeStatus::Resolved);
@@ -2438,24 +2413,14 @@ fn test_dispute_validation() {
     // Test empty reason
     let empty_reason = String::from_str(&env, "");
     let evidence = String::from_str(&env, "Valid evidence");
-    
-    let result = client.try_create_dispute(
-        &invoice_id,
-        &business,
-        &empty_reason,
-        &evidence,
-    );
+
+    let result = client.try_create_dispute(&invoice_id, &business, &empty_reason, &evidence);
     assert!(result.is_err());
 
     // Test empty evidence
     let reason = String::from_str(&env, "Valid reason");
     let empty_evidence = String::from_str(&env, "");
-    
-    let result = client.try_create_dispute(
-        &invoice_id,
-        &business,
-        &reason,
-        &empty_evidence,
-    );
+
+    let result = client.try_create_dispute(&invoice_id, &business, &reason, &empty_evidence);
     assert!(result.is_err());
 }

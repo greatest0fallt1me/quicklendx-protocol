@@ -1,6 +1,6 @@
+use crate::audit::{AuditLogEntry, AuditOperation};
 use crate::invoice::Invoice;
 use crate::payments::{Escrow, EscrowStatus};
-use crate::audit::{AuditLogEntry, AuditOperation};
 use soroban_sdk::{symbol_short, Address, BytesN, Env, String};
 
 pub fn emit_invoice_uploaded(env: &Env, invoice: &Invoice) {
@@ -144,7 +144,6 @@ pub fn emit_backup_archived(env: &Env, backup_id: &BytesN<32>) {
     );
 }
 
-
 /// Emit audit log event
 pub fn emit_audit_log_created(env: &Env, entry: &AuditLogEntry) {
     env.events().publish(
@@ -169,10 +168,8 @@ pub fn emit_audit_validation(env: &Env, invoice_id: &BytesN<32>, is_valid: bool)
 
 /// Emit audit query event
 pub fn emit_audit_query(env: &Env, query_type: String, result_count: u32) {
-    env.events().publish(
-        (symbol_short!("aud_qry"),),
-        (query_type, result_count),
-    );
+    env.events()
+        .publish((symbol_short!("aud_qry"),), (query_type, result_count));
 }
 
 /// Emit event when invoice category is updated
@@ -239,11 +236,7 @@ pub fn emit_dispute_created(
 }
 
 /// Emit event when a dispute is put under review
-pub fn emit_dispute_under_review(
-    env: &Env,
-    invoice_id: &BytesN<32>,
-    reviewed_by: &Address,
-) {
+pub fn emit_dispute_under_review(env: &Env, invoice_id: &BytesN<32>, reviewed_by: &Address) {
     env.events().publish(
         (symbol_short!("dsp_ur"),),
         (

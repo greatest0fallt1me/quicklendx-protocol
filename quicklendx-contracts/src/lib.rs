@@ -1,6 +1,7 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, String, Vec};
 
+mod audit;
 mod backup;
 mod bid;
 mod defaults;
@@ -13,25 +14,22 @@ mod payments;
 mod profits;
 mod settlement;
 mod verification;
-mod audit;
 
 use bid::{Bid, BidStatus, BidStorage};
 use defaults::{
-    handle_default as do_handle_default,
-    create_dispute as do_create_dispute,
-    put_dispute_under_review as do_put_dispute_under_review,
-    resolve_dispute as do_resolve_dispute,
-    get_dispute_details as do_get_dispute_details,
-    get_invoices_with_disputes as do_get_invoices_with_disputes,
+    create_dispute as do_create_dispute, get_dispute_details as do_get_dispute_details,
     get_invoices_by_dispute_status as do_get_invoices_by_dispute_status,
+    get_invoices_with_disputes as do_get_invoices_with_disputes,
+    handle_default as do_handle_default, put_dispute_under_review as do_put_dispute_under_review,
+    resolve_dispute as do_resolve_dispute,
 };
 use errors::QuickLendXError;
 use events::{
-    emit_escrow_created, emit_escrow_refunded, emit_escrow_released, emit_invoice_uploaded,
-    emit_invoice_verified, emit_audit_query, emit_audit_validation,
+    emit_audit_query, emit_audit_validation, emit_escrow_created, emit_escrow_refunded,
+    emit_escrow_released, emit_invoice_uploaded, emit_invoice_verified,
 };
 use investment::{Investment, InvestmentStatus, InvestmentStorage};
-use invoice::{Invoice, InvoiceStatus, InvoiceStorage, DisputeStatus};
+use invoice::{DisputeStatus, Invoice, InvoiceStatus, InvoiceStorage};
 use payments::{create_escrow, refund_escrow, release_escrow, EscrowStorage};
 use profits::calculate_profit as do_calculate_profit;
 use settlement::settle_invoice as do_settle_invoice;
@@ -42,12 +40,12 @@ use verification::{
 
 use crate::backup::{Backup, BackupStatus, BackupStorage};
 use crate::notifications::{
-    Notification, NotificationDeliveryStatus, NotificationPreferences,
-    NotificationStats, NotificationSystem,
+    Notification, NotificationDeliveryStatus, NotificationPreferences, NotificationStats,
+    NotificationSystem,
 };
 use audit::{
-    log_invoice_created, log_invoice_status_change, log_invoice_funded, log_payment_processed,
-    AuditStorage, AuditLogEntry, AuditQueryFilter, AuditStats, AuditOperation
+    log_invoice_created, log_invoice_funded, log_invoice_status_change, log_payment_processed,
+    AuditLogEntry, AuditOperation, AuditQueryFilter, AuditStats, AuditStorage,
 };
 
 #[contract]
@@ -224,7 +222,9 @@ impl QuickLendXContract {
         // Update status
         match new_status {
             InvoiceStatus::Verified => invoice.verify(&env, invoice.business.clone()),
-            InvoiceStatus::Paid => invoice.mark_as_paid(&env, invoice.business.clone(), env.ledger().timestamp()),
+            InvoiceStatus::Paid => {
+                invoice.mark_as_paid(&env, invoice.business.clone(), env.ledger().timestamp())
+            }
             InvoiceStatus::Defaulted => invoice.mark_as_defaulted(),
             _ => return Err(QuickLendXError::InvalidStatus),
         }
@@ -827,19 +827,21 @@ impl QuickLendXContract {
     }
 
     /// Get audit entry by ID
-    pub fn get_audit_entry(env: Env, audit_id: BytesN<32>) -> Result<AuditLogEntry, QuickLendXError> {
-        AuditStorage::get_audit_entry(&env, &audit_id)
-            .ok_or(QuickLendXError::AuditLogNotFound)
+    pub fn get_audit_entry(
+        env: Env,
+        audit_id: BytesN<32>,
+    ) -> Result<AuditLogEntry, QuickLendXError> {
+        AuditStorage::get_audit_entry(&env, &audit_id).ok_or(QuickLendXError::AuditLogNotFound)
     }
 
     /// Query audit logs with filters
-    pub fn query_audit_logs(
-        env: Env,
-        filter: AuditQueryFilter,
-        limit: u32,
-    ) -> Vec<AuditLogEntry> {
+    pub fn query_audit_logs(env: Env, filter: AuditQueryFilter, limit: u32) -> Vec<AuditLogEntry> {
         let results = AuditStorage::query_audit_logs(&env, &filter, limit);
-        emit_audit_query(&env, String::from_str(&env, "query_audit_logs"), results.len() as u32);
+        emit_audit_query(
+            &env,
+            String::from_str(&env, "query_audit_logs"),
+            results.len() as u32,
+        );
         results
     }
 
@@ -859,10 +861,7 @@ impl QuickLendXContract {
     }
 
     /// Get audit entries by operation type
-    pub fn get_audit_entries_by_operation(
-        env: Env,
-        operation: AuditOperation,
-    ) -> Vec<BytesN<32>> {
+    pub fn get_audit_entries_by_operation(env: Env, operation: AuditOperation) -> Vec<BytesN<32>> {
         AuditStorage::get_audit_entries_by_operation(&env, &operation)
     }
 
@@ -874,7 +873,10 @@ impl QuickLendXContract {
     // Category and Tag Management Functions
 
     /// Get invoices by category
-    pub fn get_invoices_by_category(env: Env, category: invoice::InvoiceCategory) -> Vec<BytesN<32>> {
+    pub fn get_invoices_by_category(
+        env: Env,
+        category: invoice::InvoiceCategory,
+    ) -> Vec<BytesN<32>> {
         InvoiceStorage::get_invoices_by_category(&env, &category)
     }
 
@@ -934,13 +936,23 @@ impl QuickLendXContract {
         InvoiceStorage::update_invoice(&env, &invoice);
 
         // Emit event
-        events::emit_invoice_category_updated(&env, &invoice_id, &invoice.business, &old_category, &new_category);
+        events::emit_invoice_category_updated(
+            &env,
+            &invoice_id,
+            &invoice.business,
+            &old_category,
+            &new_category,
+        );
 
         Ok(())
     }
 
     /// Add tag to invoice (business owner only)
-    pub fn add_invoice_tag(env: Env, invoice_id: BytesN<32>, tag: String) -> Result<(), QuickLendXError> {
+    pub fn add_invoice_tag(
+        env: Env,
+        invoice_id: BytesN<32>,
+        tag: String,
+    ) -> Result<(), QuickLendXError> {
         let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
 
@@ -960,7 +972,11 @@ impl QuickLendXContract {
     }
 
     /// Remove tag from invoice (business owner only)
-    pub fn remove_invoice_tag(env: Env, invoice_id: BytesN<32>, tag: String) -> Result<(), QuickLendXError> {
+    pub fn remove_invoice_tag(
+        env: Env,
+        invoice_id: BytesN<32>,
+        tag: String,
+    ) -> Result<(), QuickLendXError> {
         let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
 
@@ -980,14 +996,21 @@ impl QuickLendXContract {
     }
 
     /// Get all tags for an invoice
-    pub fn get_invoice_tags(env: Env, invoice_id: BytesN<32>) -> Result<Vec<String>, QuickLendXError> {
+    pub fn get_invoice_tags(
+        env: Env,
+        invoice_id: BytesN<32>,
+    ) -> Result<Vec<String>, QuickLendXError> {
         let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
         Ok(invoice.get_tags())
     }
 
     /// Check if invoice has a specific tag
-    pub fn invoice_has_tag(env: Env, invoice_id: BytesN<32>, tag: String) -> Result<bool, QuickLendXError> {
+    pub fn invoice_has_tag(
+        env: Env,
+        invoice_id: BytesN<32>,
+        tag: String,
+    ) -> Result<bool, QuickLendXError> {
         let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
         Ok(invoice.has_tag(tag))
