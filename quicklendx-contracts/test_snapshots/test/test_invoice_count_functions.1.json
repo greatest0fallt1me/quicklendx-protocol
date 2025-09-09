@@ -258,11 +258,7 @@
                                 "symbol": "tags"
                               },
                               "val": {
-                                "vec": [
-                                  {
-                                    "string": "test"
-                                  }
-                                ]
+                                "vec": []
                               }
                             },
                             {
@@ -490,11 +486,7 @@
                                 "symbol": "tags"
                               },
                               "val": {
-                                "vec": [
-                                  {
-                                    "string": "test"
-                                  }
-                                ]
+                                "vec": []
                               }
                             },
                             {

@@ -257,11 +257,7 @@
                                 "symbol": "tags"
                               },
                               "val": {
-                                "vec": [
-                                  {
-                                    "string": "test"
-                                  }
-                                ]
+                                "vec": []
                               }
                             },
                             {
