@@ -74,6 +74,15 @@ pub enum QuickLendXError {
     // Notification errors
     NotificationNotFound = 2000,
     NotificationBlocked = 2001,
+
+    // Performance metrics errors (2100-2199)
+    InvalidCreditScore = 2100,
+    InvalidScore = 2101,
+    InvalidRiskScore = 2102,
+    InvalidRatio = 2103,
+    InvalidMultiplier = 2104,
+    PerformanceDataNotFound = 2105,
+    InvalidPerformancePeriod = 2106,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -129,6 +138,14 @@ impl From<QuickLendXError> for Symbol {
             // Notification errors
             QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
             QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
+            // Performance metrics errors
+            QuickLendXError::InvalidCreditScore => symbol_short!("CRED_INV"),
+            QuickLendXError::InvalidScore => symbol_short!("SCORE_INV"),
+            QuickLendXError::InvalidRiskScore => symbol_short!("RISK_INV"),
+            QuickLendXError::InvalidRatio => symbol_short!("RATIO_INV"),
+            QuickLendXError::InvalidMultiplier => symbol_short!("MULT_INV"),
+            QuickLendXError::PerformanceDataNotFound => symbol_short!("PERF_NF"),
+            QuickLendXError::InvalidPerformancePeriod => symbol_short!("PERF_PER"),
         }
     }
 }

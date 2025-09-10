@@ -11,6 +11,7 @@ mod investment;
 mod invoice;
 mod notifications;
 mod payments;
+mod performance;
 mod profits;
 mod settlement;
 mod verification;
@@ -22,6 +23,10 @@ use defaults::{
     get_invoices_with_disputes as do_get_invoices_with_disputes,
     handle_default as do_handle_default, put_dispute_under_review as do_put_dispute_under_review,
     resolve_dispute as do_resolve_dispute,
+};
+use performance::{
+    BusinessCreditScore, HistoricalPerformance, InvoicePerformanceMetrics, PaymentHistory,
+    PerformanceFeeAdjustment, PerformanceStorage, RiskAssessment,
 };
 use errors::QuickLendXError;
 use events::{
@@ -44,7 +49,6 @@ use crate::notifications::{
     NotificationSystem,
 };
 use audit::{
-    log_invoice_created, log_invoice_funded, log_invoice_status_change, log_payment_processed,
     AuditLogEntry, AuditOperation, AuditQueryFilter, AuditStats, AuditStorage,
 };
 
@@ -1077,6 +1081,285 @@ impl QuickLendXContract {
         let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
         Ok(invoice.dispute_status)
+    }
+
+    // Performance Metrics and Scoring Functions
+
+    /// Create business credit score (admin only)
+    pub fn create_business_credit_score(
+        env: Env,
+        business: Address,
+        score: u32,
+        factors: Vec<String>,
+        payment_history: PaymentHistory,
+        debt_to_income_ratio: i128,
+        credit_utilization: i128,
+        creator: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can create credit scores
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if creator != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        creator.require_auth();
+
+        // Create credit score
+        let credit_score = BusinessCreditScore::new(
+            &env,
+            business.clone(),
+            score,
+            factors,
+            payment_history,
+            debt_to_income_ratio,
+            credit_utilization,
+        )?;
+
+        // Store credit score
+        PerformanceStorage::store_credit_score(&env, &credit_score);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("cred_cre"),),
+            (business, score, creator),
+        );
+
+        Ok(())
+    }
+
+    /// Update business credit score (admin only)
+    pub fn update_business_credit_score(
+        env: Env,
+        business: Address,
+        new_score: u32,
+        new_factors: Vec<String>,
+        new_payment_history: PaymentHistory,
+        new_debt_to_income: i128,
+        new_credit_utilization: i128,
+        updater: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can update credit scores
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if updater != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        updater.require_auth();
+
+        let mut credit_score = PerformanceStorage::get_credit_score(&env, &business)
+            .ok_or(QuickLendXError::PerformanceDataNotFound)?;
+
+        // Update credit score
+        credit_score.update_score(
+            &env,
+            new_score,
+            new_factors,
+            new_payment_history,
+            new_debt_to_income,
+            new_credit_utilization,
+        )?;
+
+        // Store updated credit score
+        PerformanceStorage::store_credit_score(&env, &credit_score);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("cred_upd"),),
+            (business, new_score, updater),
+        );
+
+        Ok(())
+    }
+
+    /// Create invoice performance metrics (admin only)
+    pub fn create_invoice_perf_metrics(
+        env: Env,
+        invoice_id: BytesN<32>,
+        business: Address,
+        payment_timeliness: u32,
+        amount_accuracy: u32,
+        communication_quality: u32,
+        dispute_frequency: u32,
+        resolution_time: u32,
+        customer_satisfaction: u32,
+        metrics_period: u64,
+        creator: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can create performance metrics
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if creator != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        creator.require_auth();
+
+        // Verify invoice exists
+        let _invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        // Create performance metrics
+        let metrics = InvoicePerformanceMetrics::new(
+            &env,
+            invoice_id.clone(),
+            business.clone(),
+            payment_timeliness,
+            amount_accuracy,
+            communication_quality,
+            dispute_frequency,
+            resolution_time,
+            customer_satisfaction,
+            metrics_period,
+        )?;
+
+        // Store metrics
+        PerformanceStorage::store_performance_metrics(&env, &metrics);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("perf_cre"),),
+            (invoice_id, business, metrics.performance_score, creator),
+        );
+
+        Ok(())
+    }
+
+    /// Create risk assessment (admin only)
+    pub fn create_risk_assessment(
+        env: Env,
+        business: Address,
+        risk_score: u32,
+        risk_factors: Vec<String>,
+        mitigation_strategies: Vec<String>,
+        assessor: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can create risk assessments
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if assessor != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        assessor.require_auth();
+
+        // Create risk assessment
+        let assessment = RiskAssessment::new(
+            &env,
+            business.clone(),
+            risk_score,
+            risk_factors,
+            mitigation_strategies,
+            assessor.clone(),
+        )?;
+
+        // Store assessment
+        PerformanceStorage::store_risk_assessment(&env, &assessment);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("risk_cre"),),
+            (business, risk_score, assessment.risk_level, assessor),
+        );
+
+        Ok(())
+    }
+
+    /// Create performance-based fee adjustment (admin only)
+    pub fn create_perf_fee_adjustment(
+        env: Env,
+        business: Address,
+        base_fee_bps: i128,
+        performance_multiplier: i128,
+        risk_adjustment: i128,
+        creator: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can create fee adjustments
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if creator != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        creator.require_auth();
+
+        // Create fee adjustment
+        let adjustment = PerformanceFeeAdjustment::new(
+            &env,
+            business.clone(),
+            base_fee_bps,
+            performance_multiplier,
+            risk_adjustment,
+        )?;
+
+        // Store adjustment
+        PerformanceStorage::store_fee_adjustment(&env, &adjustment);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("fee_adj"),),
+            (business, adjustment.final_fee_bps, creator),
+        );
+
+        Ok(())
+    }
+
+    /// Get business credit score
+    pub fn get_business_credit_score(env: Env, business: Address) -> Option<BusinessCreditScore> {
+        PerformanceStorage::get_credit_score(&env, &business)
+    }
+
+    /// Get invoice performance metrics
+    pub fn get_invoice_performance_metrics(env: Env, invoice_id: BytesN<32>) -> Option<InvoicePerformanceMetrics> {
+        PerformanceStorage::get_performance_metrics(&env, &invoice_id)
+    }
+
+    /// Get risk assessment for business
+    pub fn get_business_risk_assessment(env: Env, business: Address) -> Option<RiskAssessment> {
+        PerformanceStorage::get_risk_assessment(&env, &business)
+    }
+
+    /// Get performance fee adjustment for business
+    pub fn get_business_fee_adjustment(env: Env, business: Address) -> Option<PerformanceFeeAdjustment> {
+        PerformanceStorage::get_fee_adjustment(&env, &business)
+    }
+
+    /// Get historical performance for business
+    pub fn get_business_hist_perf(env: Env, business: Address) -> Option<HistoricalPerformance> {
+        PerformanceStorage::get_historical_performance(&env, &business)
+    }
+
+    /// Calculate business performance score
+    pub fn calculate_business_performance_score(env: Env, business: Address) -> Result<u32, QuickLendXError> {
+        let credit_score = PerformanceStorage::get_credit_score(&env, &business)
+            .ok_or(QuickLendXError::PerformanceDataNotFound)?;
+
+        let risk_assessment = PerformanceStorage::get_risk_assessment(&env, &business)
+            .ok_or(QuickLendXError::PerformanceDataNotFound)?;
+
+        // Calculate weighted performance score
+        let credit_weight = 40; // 40% weight for credit score
+        let risk_weight = 30;   // 30% weight for risk assessment
+        let payment_weight = 30; // 30% weight for payment history
+
+        let credit_component = (credit_score.score * credit_weight) / 100;
+        let risk_component = ((100 - risk_assessment.risk_score) * risk_weight) / 100;
+        let payment_component = (credit_score.payment_history.payment_consistency * payment_weight as i128 / 10000) as u32;
+
+        let performance_score = credit_component + risk_component + payment_component;
+
+        Ok(performance_score)
+    }
+
+    /// Get businesses with high credit scores
+    pub fn get_high_credit_businesses(env: Env, threshold: u32) -> Vec<Address> {
+        PerformanceStorage::get_high_credit_businesses(&env, threshold)
+    }
+
+    /// Get businesses with low risk scores
+    pub fn get_low_risk_businesses(env: Env, threshold: u32) -> Vec<Address> {
+        PerformanceStorage::get_low_risk_businesses(&env, threshold)
+    }
+
+    /// Get businesses with high performance scores
+    pub fn get_high_performance_businesses(env: Env, threshold: u32) -> Vec<Address> {
+        PerformanceStorage::get_high_performance_businesses(&env, threshold)
     }
 }
 
