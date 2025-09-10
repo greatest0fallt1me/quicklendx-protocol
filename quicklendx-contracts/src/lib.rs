@@ -4,6 +4,7 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, St
 mod audit;
 mod backup;
 mod bid;
+mod collateral;
 mod defaults;
 mod errors;
 mod events;
@@ -16,6 +17,10 @@ mod settlement;
 mod verification;
 
 use bid::{Bid, BidStatus, BidStorage};
+use collateral::{
+    Collateral, CollateralStatus, CollateralStorage, CollateralTransfer,
+    CollateralType, RiskAssessment,
+};
 use defaults::{
     create_dispute as do_create_dispute, get_dispute_details as do_get_dispute_details,
     get_invoices_by_dispute_status as do_get_invoices_by_dispute_status,
@@ -1077,6 +1082,340 @@ impl QuickLendXContract {
         let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
         Ok(invoice.dispute_status)
+    }
+
+    // Collateral Management Functions
+
+    /// Submit collateral for an invoice (business only)
+    pub fn submit_collateral(
+        env: Env,
+        invoice_id: BytesN<32>,
+        business: Address,
+        collateral_type: CollateralType,
+        amount: i128,
+        currency: Address,
+        description: String,
+        expires_at: Option<u64>,
+    ) -> Result<BytesN<32>, QuickLendXError> {
+        // Only the business can submit collateral
+        business.require_auth();
+
+        // Verify invoice exists and business owns it
+        let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+        
+        if invoice.business != business {
+            return Err(QuickLendXError::NotBusinessOwner);
+        }
+
+        // Only allow collateral submission for verified invoices
+        if invoice.status != InvoiceStatus::Verified {
+            return Err(QuickLendXError::InvalidStatus);
+        }
+
+        // Create collateral entry
+        let collateral = Collateral::new(
+            &env,
+            invoice_id.clone(),
+            business.clone(),
+            collateral_type,
+            amount,
+            currency.clone(),
+            description,
+            expires_at,
+        )?;
+
+        // Store collateral
+        CollateralStorage::store_collateral(&env, &collateral);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("col_sub"),),
+            (collateral.id.clone(), invoice_id, business, amount, currency),
+        );
+
+        Ok(collateral.id)
+    }
+
+    /// Validate collateral (admin only)
+    pub fn validate_collateral(
+        env: Env,
+        collateral_id: BytesN<32>,
+        validator: Address,
+        notes: String,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can validate collateral
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if validator != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        validator.require_auth();
+
+        let mut collateral = CollateralStorage::get_collateral(&env, &collateral_id)
+            .ok_or(QuickLendXError::CollateralNotFound)?;
+
+        // Remove from old status list
+        CollateralStorage::remove_from_status_collaterals(&env, &collateral.status, &collateral_id);
+
+        // Validate collateral
+        collateral.validate(&env, validator.clone(), notes)?;
+
+        // Store updated collateral
+        CollateralStorage::update_collateral(&env, &collateral);
+
+        // Add to new status list
+        CollateralStorage::add_to_status_collaterals(&env, &collateral.status, &collateral_id);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("col_val"),),
+            (collateral_id, collateral.invoice_id, validator),
+        );
+
+        Ok(())
+    }
+
+    /// Release collateral back to business
+    pub fn release_collateral(
+        env: Env,
+        collateral_id: BytesN<32>,
+        releaser: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can release collateral
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if releaser != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        releaser.require_auth();
+
+        let mut collateral = CollateralStorage::get_collateral(&env, &collateral_id)
+            .ok_or(QuickLendXError::CollateralNotFound)?;
+
+        // Remove from old status list
+        CollateralStorage::remove_from_status_collaterals(&env, &collateral.status, &collateral_id);
+
+        // Release collateral
+        collateral.release(&env)?;
+
+        // Store updated collateral
+        CollateralStorage::update_collateral(&env, &collateral);
+
+        // Add to new status list
+        CollateralStorage::add_to_status_collaterals(&env, &collateral.status, &collateral_id);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("col_rel"),),
+            (collateral_id, collateral.invoice_id, collateral.business),
+        );
+
+        Ok(())
+    }
+
+    /// Forfeit collateral due to default
+    pub fn forfeit_collateral(
+        env: Env,
+        collateral_id: BytesN<32>,
+        forfeiter: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can forfeit collateral
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if forfeiter != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        forfeiter.require_auth();
+
+        let mut collateral = CollateralStorage::get_collateral(&env, &collateral_id)
+            .ok_or(QuickLendXError::CollateralNotFound)?;
+
+        // Remove from old status list
+        CollateralStorage::remove_from_status_collaterals(&env, &collateral.status, &collateral_id);
+
+        // Forfeit collateral
+        collateral.forfeit(&env)?;
+
+        // Store updated collateral
+        CollateralStorage::update_collateral(&env, &collateral);
+
+        // Add to new status list
+        CollateralStorage::add_to_status_collaterals(&env, &collateral.status, &collateral_id);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("col_forf"),),
+            (collateral_id, collateral.invoice_id, collateral.business),
+        );
+
+        Ok(())
+    }
+
+    /// Transfer collateral between addresses
+    pub fn transfer_collateral(
+        env: Env,
+        collateral_id: BytesN<32>,
+        from_address: Address,
+        to_address: Address,
+        amount: i128,
+        reason: String,
+    ) -> Result<BytesN<32>, QuickLendXError> {
+        // Only admin can transfer collateral
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        admin.require_auth();
+
+        // Verify collateral exists
+        let collateral = CollateralStorage::get_collateral(&env, &collateral_id)
+            .ok_or(QuickLendXError::CollateralNotFound)?;
+
+        // Only allow transfers of validated collateral
+        if collateral.status != CollateralStatus::Validated {
+            return Err(QuickLendXError::InvalidStatus);
+        }
+
+        // Create transfer record
+        let transfer = CollateralTransfer::new(
+            &env,
+            collateral_id.clone(),
+            from_address.clone(),
+            to_address.clone(),
+            amount,
+            reason,
+        )?;
+
+        // Store transfer
+        CollateralStorage::store_transfer(&env, &transfer);
+
+        // Complete the transfer
+        let mut transfer = transfer;
+        transfer.complete()?;
+        CollateralStorage::store_transfer(&env, &transfer);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("col_trans"),),
+            (transfer.id.clone(), collateral_id, from_address, to_address, amount),
+        );
+
+        Ok(transfer.id)
+    }
+
+    /// Create risk assessment for an invoice
+    pub fn create_risk_assessment(
+        env: Env,
+        invoice_id: BytesN<32>,
+        base_risk_score: u32,
+        business_risk_score: u32,
+        risk_factors: Vec<String>,
+        assessor: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can create risk assessments
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if assessor != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        assessor.require_auth();
+
+        // Verify invoice exists
+        let _invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        // Create risk assessment
+        let assessment = RiskAssessment::new(
+            &env,
+            invoice_id.clone(),
+            base_risk_score,
+            business_risk_score,
+            risk_factors,
+            assessor.clone(),
+        )?;
+
+        // Store assessment
+        CollateralStorage::store_risk_assessment(&env, &assessment);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("risk_ass"),),
+            (invoice_id, assessor, assessment.final_risk_score),
+        );
+
+        Ok(())
+    }
+
+    /// Get collateral by ID
+    pub fn get_collateral(env: Env, collateral_id: BytesN<32>) -> Option<Collateral> {
+        CollateralStorage::get_collateral(&env, &collateral_id)
+    }
+
+    /// Get all collaterals for an invoice
+    pub fn get_invoice_collaterals(env: Env, invoice_id: BytesN<32>) -> Vec<BytesN<32>> {
+        CollateralStorage::get_invoice_collaterals(&env, &invoice_id)
+    }
+
+    /// Get all collaterals for a business
+    pub fn get_business_collaterals(env: Env, business: Address) -> Vec<BytesN<32>> {
+        CollateralStorage::get_business_collaterals(&env, &business)
+    }
+
+    /// Get collaterals by status
+    pub fn get_collaterals_by_status(env: Env, status: CollateralStatus) -> Vec<BytesN<32>> {
+        CollateralStorage::get_collaterals_by_status(&env, &status)
+    }
+
+    /// Get collaterals by type
+    pub fn get_collaterals_by_type(env: Env, collateral_type: CollateralType) -> Vec<BytesN<32>> {
+        CollateralStorage::get_collaterals_by_type(&env, &collateral_type)
+    }
+
+    /// Get low-risk collaterals
+    pub fn get_low_risk_collaterals(env: Env, threshold: u32) -> Vec<BytesN<32>> {
+        CollateralStorage::get_low_risk_collaterals(&env, threshold)
+    }
+
+    /// Get risk assessment for an invoice
+    pub fn get_risk_assessment(env: Env, invoice_id: BytesN<32>) -> Option<RiskAssessment> {
+        CollateralStorage::get_risk_assessment(&env, &invoice_id)
+    }
+
+    /// Get collateral transfer by ID
+    pub fn get_collateral_transfer(env: Env, transfer_id: BytesN<32>) -> Option<CollateralTransfer> {
+        CollateralStorage::get_transfer(&env, &transfer_id)
+    }
+
+    /// Update collateral risk score
+    pub fn update_collateral_risk_score(
+        env: Env,
+        collateral_id: BytesN<32>,
+        new_risk_score: u32,
+        updater: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can update risk scores
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if updater != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        updater.require_auth();
+
+        let mut collateral = CollateralStorage::get_collateral(&env, &collateral_id)
+            .ok_or(QuickLendXError::CollateralNotFound)?;
+
+        // Update risk score
+        collateral.update_risk_score(new_risk_score)?;
+
+        // Store updated collateral
+        CollateralStorage::update_collateral(&env, &collateral);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("risk_upd"),),
+            (collateral_id, new_risk_score, updater),
+        );
+
+        Ok(())
     }
 }
 

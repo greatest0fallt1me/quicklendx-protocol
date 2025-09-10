@@ -74,6 +74,17 @@ pub enum QuickLendXError {
     // Notification errors
     NotificationNotFound = 2000,
     NotificationBlocked = 2001,
+
+    // Collateral errors (2100-2199)
+    CollateralNotFound = 2100,
+    CollateralAlreadyExists = 2101,
+    CollateralExpired = 2102,
+    InvalidCollateralType = 2103,
+    InvalidRiskScore = 2104,
+    InvalidExpirationDate = 2105,
+    CollateralTransferFailed = 2106,
+    CollateralTransferNotFound = 2107,
+    RiskAssessmentNotFound = 2108,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -129,6 +140,16 @@ impl From<QuickLendXError> for Symbol {
             // Notification errors
             QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
             QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
+            // Collateral errors
+            QuickLendXError::CollateralNotFound => symbol_short!("COL_NF"),
+            QuickLendXError::CollateralAlreadyExists => symbol_short!("COL_EX"),
+            QuickLendXError::CollateralExpired => symbol_short!("COL_EXP"),
+            QuickLendXError::InvalidCollateralType => symbol_short!("COL_IT"),
+            QuickLendXError::InvalidRiskScore => symbol_short!("COL_RS"),
+            QuickLendXError::InvalidExpirationDate => symbol_short!("COL_ED"),
+            QuickLendXError::CollateralTransferFailed => symbol_short!("COL_TF"),
+            QuickLendXError::CollateralTransferNotFound => symbol_short!("COL_TN"),
+            QuickLendXError::RiskAssessmentNotFound => symbol_short!("COL_RN"),
         }
     }
 }
