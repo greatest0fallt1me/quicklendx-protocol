@@ -74,6 +74,14 @@ pub enum QuickLendXError {
     // Notification errors
     NotificationNotFound = 2000,
     NotificationBlocked = 2001,
+
+    // Priority errors (2100-2199)
+    InvalidPriorityLevel = 2100,
+    InvalidUrgencyLevel = 2101,
+    InvalidPriorityChange = 2102,
+    PriorityChangeNotFound = 2103,
+    InvalidFeeStructure = 2104,
+    PriorityChangeNotAllowed = 2105,
 }
 
 impl From<QuickLendXError> for Symbol {
@@ -129,6 +137,13 @@ impl From<QuickLendXError> for Symbol {
             // Notification errors
             QuickLendXError::NotificationNotFound => symbol_short!("NOT_NF"),
             QuickLendXError::NotificationBlocked => symbol_short!("NOT_BL"),
+            // Priority errors
+            QuickLendXError::InvalidPriorityLevel => symbol_short!("PRI_IL"),
+            QuickLendXError::InvalidUrgencyLevel => symbol_short!("URG_IL"),
+            QuickLendXError::InvalidPriorityChange => symbol_short!("PRI_IC"),
+            QuickLendXError::PriorityChangeNotFound => symbol_short!("PRI_NF"),
+            QuickLendXError::InvalidFeeStructure => symbol_short!("FEE_IS"),
+            QuickLendXError::PriorityChangeNotAllowed => symbol_short!("PRI_NA"),
         }
     }
 }

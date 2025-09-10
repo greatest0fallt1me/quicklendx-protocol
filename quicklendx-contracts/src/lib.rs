@@ -11,6 +11,7 @@ mod investment;
 mod invoice;
 mod notifications;
 mod payments;
+mod priority;
 mod profits;
 mod settlement;
 mod verification;
@@ -22,6 +23,10 @@ use defaults::{
     get_invoices_with_disputes as do_get_invoices_with_disputes,
     handle_default as do_handle_default, put_dispute_under_review as do_put_dispute_under_review,
     resolve_dispute as do_resolve_dispute,
+};
+use priority::{
+    PriorityBidCriteria, PriorityChangeRequest, PriorityFeeStructure,
+    PriorityLevel, PriorityStorage, UrgencyLevel, calculate_urgency_level,
 };
 use errors::QuickLendXError;
 use events::{
@@ -1077,6 +1082,349 @@ impl QuickLendXContract {
         let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
         Ok(invoice.dispute_status)
+    }
+
+    // Priority and Urgency Management Functions
+
+    /// Set invoice priority level (business owner only)
+    pub fn set_invoice_priority(
+        env: Env,
+        invoice_id: BytesN<32>,
+        priority_level: PriorityLevel,
+        setter: Address,
+    ) -> Result<(), QuickLendXError> {
+        let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        // Only the business owner can set priority
+        if invoice.business != setter {
+            return Err(QuickLendXError::NotBusinessOwner);
+        }
+        setter.require_auth();
+
+        // Only allow priority setting for verified invoices
+        if invoice.status != InvoiceStatus::Verified {
+            return Err(QuickLendXError::InvalidStatus);
+        }
+
+        let old_priority = invoice.priority_level.clone();
+        invoice.update_priority_level(priority_level.clone());
+
+        // Update storage
+        InvoiceStorage::update_invoice(&env, &invoice);
+
+        // Update priority lists
+        PriorityStorage::remove_from_priority_list(&env, &old_priority, &invoice_id);
+        PriorityStorage::add_to_priority_list(&env, &priority_level, &invoice_id);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("pri_set"),),
+            (invoice_id, old_priority, priority_level, setter),
+        );
+
+        Ok(())
+    }
+
+    /// Update invoice urgency level (admin only)
+    pub fn update_invoice_urgency(
+        env: Env,
+        invoice_id: BytesN<32>,
+        urgency_level: UrgencyLevel,
+        updater: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can update urgency
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if updater != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        updater.require_auth();
+
+        let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        let old_urgency = invoice.urgency_level.clone();
+        invoice.update_urgency_level(urgency_level.clone());
+
+        // Update storage
+        InvoiceStorage::update_invoice(&env, &invoice);
+
+        // Update urgency lists
+        PriorityStorage::remove_from_urgency_list(&env, &old_urgency, &invoice_id);
+        PriorityStorage::add_to_urgency_list(&env, &urgency_level, &invoice_id);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("urg_upd"),),
+            (invoice_id, old_urgency, urgency_level, updater),
+        );
+
+        Ok(())
+    }
+
+    /// Calculate and update urgency level based on due date
+    pub fn calculate_invoice_urgency(
+        env: Env,
+        invoice_id: BytesN<32>,
+    ) -> Result<UrgencyLevel, QuickLendXError> {
+        let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        let urgency_level = calculate_urgency_level(&env, invoice.due_date);
+
+        // Update the invoice urgency
+        let mut invoice = invoice;
+        let old_urgency = invoice.urgency_level.clone();
+        invoice.update_urgency_level(urgency_level.clone());
+
+        // Update storage
+        InvoiceStorage::update_invoice(&env, &invoice);
+
+        // Update urgency lists
+        PriorityStorage::remove_from_urgency_list(&env, &old_urgency, &invoice_id);
+        PriorityStorage::add_to_urgency_list(&env, &urgency_level, &invoice_id);
+
+        Ok(urgency_level)
+    }
+
+    /// Request priority change (business owner only)
+    pub fn request_priority_change(
+        env: Env,
+        invoice_id: BytesN<32>,
+        new_priority: PriorityLevel,
+        reason: String,
+        requester: Address,
+    ) -> Result<BytesN<32>, QuickLendXError> {
+        let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        // Only the business owner can request priority changes
+        if invoice.business != requester {
+            return Err(QuickLendXError::NotBusinessOwner);
+        }
+        requester.require_auth();
+
+        // Create priority change request
+        let request = PriorityChangeRequest::new(
+            &env,
+            invoice_id.clone(),
+            requester.clone(),
+            invoice.priority_level.clone(),
+            new_priority.clone(),
+            reason,
+        )?;
+
+        // Store request
+        PriorityStorage::store_priority_request(&env, &request);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("pri_req"),),
+            (request.id.clone(), invoice_id, requester, new_priority),
+        );
+
+        Ok(request.id)
+    }
+
+    /// Review priority change request (admin only)
+    pub fn review_priority_change(
+        env: Env,
+        request_id: BytesN<32>,
+        approved: bool,
+        reviewer: Address,
+        notes: String,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can review priority changes
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if reviewer != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        reviewer.require_auth();
+
+        let mut request = PriorityStorage::get_priority_request(&env, &request_id)
+            .ok_or(QuickLendXError::PriorityChangeNotFound)?;
+
+        // Remove from pending requests
+        PriorityStorage::remove_from_pending_requests(&env, &request_id);
+
+        if approved {
+            // Approve the request
+            request.approve(&env, reviewer.clone(), notes)?;
+
+            // Update the invoice priority
+            let mut invoice = InvoiceStorage::get_invoice(&env, &request.invoice_id)
+                .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+            let old_priority = invoice.priority_level.clone();
+            invoice.update_priority_level(request.new_priority.clone());
+
+            // Update storage
+            InvoiceStorage::update_invoice(&env, &invoice);
+
+            // Update priority lists
+            PriorityStorage::remove_from_priority_list(&env, &old_priority, &request.invoice_id);
+            PriorityStorage::add_to_priority_list(&env, &request.new_priority, &request.invoice_id);
+
+            // Emit event
+            env.events().publish(
+                (symbol_short!("pri_appr"),),
+                (request_id, request.invoice_id, request.new_priority, reviewer),
+            );
+        } else {
+            // Reject the request
+            request.reject(&env, reviewer.clone(), notes)?;
+
+            // Emit event
+            env.events().publish(
+                (symbol_short!("pri_rej"),),
+                (request_id, request.invoice_id, request.new_priority, reviewer),
+            );
+        }
+
+        // Update request
+        PriorityStorage::update_priority_request(&env, &request);
+
+        Ok(())
+    }
+
+    /// Set priority fee structure (admin only)
+    pub fn set_priority_fee_structure(
+        env: Env,
+        priority_level: PriorityLevel,
+        base_fee_bps: i128,
+        urgency_multiplier: i128,
+        minimum_fee: i128,
+        maximum_fee: i128,
+        setter: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can set fee structures
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if setter != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        setter.require_auth();
+
+        // Create fee structure
+        let fee_structure = PriorityFeeStructure::new(
+            priority_level.clone(),
+            base_fee_bps,
+            urgency_multiplier,
+            minimum_fee,
+            maximum_fee,
+        )?;
+
+        // Store fee structure
+        PriorityStorage::store_fee_structure(&env, &fee_structure);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("fee_set"),),
+            (priority_level, base_fee_bps, urgency_multiplier, setter),
+        );
+
+        Ok(())
+    }
+
+    /// Calculate priority-based fee
+    pub fn calculate_priority_fee(
+        env: Env,
+        priority_level: PriorityLevel,
+        urgency_level: UrgencyLevel,
+        base_amount: i128,
+    ) -> Result<i128, QuickLendXError> {
+        let fee_structure = PriorityStorage::get_fee_structure(&env, &priority_level)
+            .ok_or(QuickLendXError::PriorityChangeNotFound)?;
+
+        Ok(fee_structure.calculate_fee(urgency_level, base_amount))
+    }
+
+    /// Set priority bid criteria for an invoice
+    pub fn set_priority_bid_criteria(
+        env: Env,
+        invoice_id: BytesN<32>,
+        priority_level: PriorityLevel,
+        urgency_threshold: UrgencyLevel,
+        fee_preference: i128,
+        setter: Address,
+    ) -> Result<(), QuickLendXError> {
+        // Only admin can set bid criteria
+        let admin = BusinessVerificationStorage::get_admin(&env)
+            .ok_or(QuickLendXError::NotAdmin)?;
+        if setter != admin {
+            return Err(QuickLendXError::NotAdmin);
+        }
+        setter.require_auth();
+
+        // Verify invoice exists
+        let _invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+
+        // Create bid criteria
+        let criteria = PriorityBidCriteria::new(
+            &env,
+            invoice_id.clone(),
+            priority_level.clone(),
+            urgency_threshold.clone(),
+            fee_preference,
+        )?;
+
+        // Store criteria
+        PriorityStorage::store_bid_criteria(&env, &criteria);
+
+        // Emit event
+        env.events().publish(
+            (symbol_short!("crit_set"),),
+            (invoice_id, priority_level, urgency_threshold, setter),
+        );
+
+        Ok(())
+    }
+
+    /// Get invoices by priority level
+    pub fn get_invoices_by_priority(env: Env, priority_level: PriorityLevel) -> Vec<BytesN<32>> {
+        PriorityStorage::get_invoices_by_priority(&env, &priority_level)
+    }
+
+    /// Get invoices by urgency level
+    pub fn get_invoices_by_urgency(env: Env, urgency_level: UrgencyLevel) -> Vec<BytesN<32>> {
+        PriorityStorage::get_invoices_by_urgency(&env, &urgency_level)
+    }
+
+    /// Get pending priority change requests
+    pub fn get_pending_priority_requests(env: Env) -> Vec<BytesN<32>> {
+        PriorityStorage::get_pending_requests(&env)
+    }
+
+    /// Get priority change request by ID
+    pub fn get_priority_change_request(env: Env, request_id: BytesN<32>) -> Option<PriorityChangeRequest> {
+        PriorityStorage::get_priority_request(&env, &request_id)
+    }
+
+    /// Get priority fee structure
+    pub fn get_priority_fee_structure(env: Env, priority_level: PriorityLevel) -> Option<PriorityFeeStructure> {
+        PriorityStorage::get_fee_structure(&env, &priority_level)
+    }
+
+    /// Get priority bid criteria for an invoice
+    pub fn get_priority_bid_criteria(env: Env, invoice_id: BytesN<32>) -> Option<PriorityBidCriteria> {
+        PriorityStorage::get_bid_criteria(&env, &invoice_id)
+    }
+
+    /// Get invoice priority level
+    pub fn get_invoice_priority(env: Env, invoice_id: BytesN<32>) -> Result<PriorityLevel, QuickLendXError> {
+        let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+        Ok(invoice.priority_level)
+    }
+
+    /// Get invoice urgency level
+    pub fn get_invoice_urgency(env: Env, invoice_id: BytesN<32>) -> Result<UrgencyLevel, QuickLendXError> {
+        let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+        Ok(invoice.urgency_level)
     }
 }
 

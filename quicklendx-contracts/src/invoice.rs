@@ -80,10 +80,13 @@ pub struct Invoice {
     pub ratings: Vec<InvoiceRating>,   // List of all ratings
     pub dispute_status: DisputeStatus, // Current dispute status
     pub dispute: Dispute,      // Dispute details if any
+    pub priority_level: PriorityLevel, // Invoice priority level
+    pub urgency_level: UrgencyLevel,   // Invoice urgency level
 }
 
 // Use the main error enum from errors.rs
 use crate::errors::QuickLendXError;
+use crate::priority::{PriorityLevel, UrgencyLevel};
 
 use crate::audit::{log_invoice_created, log_invoice_funded, log_invoice_status_change};
 
@@ -130,6 +133,8 @@ impl Invoice {
                 resolved_by: Address::from_str(env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"),
                 resolved_at: 0,
             },
+            priority_level: PriorityLevel::Medium, // Default priority
+            urgency_level: UrgencyLevel::Low,      // Default urgency
         };
 
         // Log invoice creation
@@ -368,6 +373,26 @@ impl Invoice {
     /// Get all tags as a vector
     pub fn get_tags(&self) -> Vec<String> {
         self.tags.clone()
+    }
+
+    /// Update priority level
+    pub fn update_priority_level(&mut self, new_priority: PriorityLevel) {
+        self.priority_level = new_priority;
+    }
+
+    /// Update urgency level
+    pub fn update_urgency_level(&mut self, new_urgency: UrgencyLevel) {
+        self.urgency_level = new_urgency;
+    }
+
+    /// Get priority level
+    pub fn get_priority_level(&self) -> PriorityLevel {
+        self.priority_level.clone()
+    }
+
+    /// Get urgency level
+    pub fn get_urgency_level(&self) -> UrgencyLevel {
+        self.urgency_level.clone()
     }
 }
 
