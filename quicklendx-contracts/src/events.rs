@@ -1,4 +1,5 @@
 use crate::audit::{AuditLogEntry, AuditOperation};
+use crate::bid::Bid;
 use crate::invoice::Invoice;
 use crate::payments::{Escrow, EscrowStatus};
 use crate::profits::PlatformFeeConfig;
@@ -103,6 +104,19 @@ pub fn emit_escrow_refunded(
             invoice_id.clone(),
             investor.clone(),
             amount,
+        ),
+    );
+}
+
+pub fn emit_bid_expired(env: &Env, bid: &Bid) {
+    env.events().publish(
+        (symbol_short!("bid_exp"),),
+        (
+            bid.bid_id.clone(),
+            bid.invoice_id.clone(),
+            bid.investor.clone(),
+            bid.bid_amount,
+            bid.expiration_timestamp,
         ),
     );
 }
