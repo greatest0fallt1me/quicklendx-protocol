@@ -1,4 +1,6 @@
+use crate::bid::{BidStatus, BidStorage};
 use crate::errors::QuickLendXError;
+use crate::invoice::Invoice;
 use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Vec};
 
 #[contracttype]
@@ -18,6 +20,8 @@ pub struct BusinessVerification {
     pub submitted_at: u64,
     pub rejection_reason: Option<String>,
 }
+
+const MIN_BID_AMOUNT: i128 = 100;
 
 pub struct BusinessVerificationStorage;
 
@@ -180,6 +184,37 @@ impl BusinessVerificationStorage {
             false
         }
     }
+}
+
+pub fn validate_bid(
+    env: &Env,
+    invoice: &Invoice,
+    bid_amount: i128,
+    expected_return: i128,
+    investor: &Address,
+) -> Result<(), QuickLendXError> {
+    if bid_amount <= 0 || bid_amount < MIN_BID_AMOUNT {
+        return Err(QuickLendXError::InvalidAmount);
+    }
+
+    if bid_amount > invoice.amount {
+        return Err(QuickLendXError::InvoiceAmountInvalid);
+    }
+
+    if expected_return <= bid_amount {
+        return Err(QuickLendXError::InvalidAmount);
+    }
+
+    let existing_bids = BidStorage::get_bids_for_invoice(env, &invoice.id);
+    for bid_id in existing_bids.iter() {
+        if let Some(existing_bid) = BidStorage::get_bid(env, &bid_id) {
+            if existing_bid.investor == *investor && existing_bid.status == BidStatus::Placed {
+                return Err(QuickLendXError::OperationNotAllowed);
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn submit_kyc_application(

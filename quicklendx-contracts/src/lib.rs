@@ -34,8 +34,8 @@ use payments::{create_escrow, refund_escrow, release_escrow, EscrowStorage};
 use profits::calculate_profit as do_calculate_profit;
 use settlement::settle_invoice as do_settle_invoice;
 use verification::{
-    get_business_verification_status, reject_business, submit_kyc_application, verify_business,
-    verify_invoice_data, BusinessVerificationStorage,
+    get_business_verification_status, reject_business, submit_kyc_application, validate_bid,
+    verify_business, verify_invoice_data, BusinessVerificationStorage,
 };
 
 use crate::backup::{Backup, BackupStatus, BackupStorage};
@@ -297,11 +297,9 @@ impl QuickLendXContract {
         if invoice.status != InvoiceStatus::Verified {
             return Err(QuickLendXError::InvalidStatus);
         }
-        if bid_amount <= 0 {
-            return Err(QuickLendXError::InvalidAmount);
-        }
         // Only the investor can place their own bid
         investor.require_auth();
+        validate_bid(&env, &invoice, bid_amount, expected_return, &investor)?;
         // Create bid
         let bid_id = BidStorage::generate_unique_bid_id(&env);
         let bid = Bid {

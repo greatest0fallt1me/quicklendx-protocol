@@ -361,14 +361,14 @@ fn test_simple_bid_storage() {
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
 
     // Place a single bid to test basic functionality
-    let bid_id = client.place_bid(&investor, &invoice_id, &1001, &1100);
+    let bid_id = client.place_bid(&investor, &invoice_id, &900, &1000);
 
     // Verify that the bid can be retrieved
     let bid = client.get_bid(&bid_id);
     assert!(bid.is_some(), "Bid should be retrievable");
     let bid = bid.unwrap();
-    assert_eq!(bid.bid_amount, 1001);
-    assert_eq!(bid.expected_return, 1100);
+    assert_eq!(bid.bid_amount, 900);
+    assert_eq!(bid.expected_return, 1000);
 }
 
 #[test]
@@ -414,17 +414,71 @@ fn test_unique_bid_id_generation() {
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
 
     // Place first bid
-    let bid_id_1 = client.place_bid(&investor, &invoice_id, &1001, &1100);
+    let bid_id_1 = client.place_bid(&investor, &invoice_id, &900, &1100);
 
     // Verify first bid was stored correctly
     let bid_1 = client.get_bid(&bid_id_1);
     assert!(bid_1.is_some(), "First bid should be retrievable");
 
-    // Place second bid
-    let bid_id_2 = client.place_bid(&investor, &invoice_id, &1002, &1200);
+    // Attempt duplicate bid from same investor should fail
+    let duplicate = client.try_place_bid(&investor, &invoice_id, &950, &1200);
+    assert!(
+        duplicate.is_err(),
+        "Duplicate active bids should be rejected"
+    );
+}
 
-    // Verify that the bid IDs are different
-    assert_ne!(bid_id_1, bid_id_2);
+#[test]
+fn test_bid_validation_rules() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, QuickLendXContract);
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let business = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let other_investor = Address::generate(&env);
+    let currency = Address::generate(&env);
+    let due_date = env.ledger().timestamp() + 86400;
+
+    // Create and verify invoice
+    let invoice_id = client.store_invoice(
+        &business,
+        &1000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Validation invoice"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+    client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+
+    // Amount below minimum
+    assert!(client
+        .try_place_bid(&investor, &invoice_id, &50, &60)
+        .is_err());
+
+    // Expected return must exceed bid amount
+    assert!(client
+        .try_place_bid(&investor, &invoice_id, &150, &150)
+        .is_err());
+
+    // Amount cannot exceed invoice amount
+    assert!(client
+        .try_place_bid(&investor, &invoice_id, &1500, &1600)
+        .is_err());
+
+    // Valid bid succeeds
+    let _bid_id = client.place_bid(&investor, &invoice_id, &150, &200);
+
+    // Duplicate bid from same investor is rejected
+    assert!(client
+        .try_place_bid(&investor, &invoice_id, &180, &240)
+        .is_err());
+
+    // Another investor can still bid
+    let second_bid = client.try_place_bid(&other_investor, &invoice_id, &180, &240);
+    assert!(second_bid.is_ok());
 }
 
 // TODO: Fix type mismatch issues in escrow tests
