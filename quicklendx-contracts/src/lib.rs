@@ -160,14 +160,17 @@ impl QuickLendXContract {
 
     /// Verify an invoice (admin or automated process)
     pub fn verify_invoice(env: Env, invoice_id: BytesN<32>) -> Result<(), QuickLendXError> {
+        let admin =
+            BusinessVerificationStorage::get_admin(&env).ok_or(QuickLendXError::NotAdmin)?;
+        admin.require_auth();
+
         let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
         // Only allow verification if pending
         if invoice.status != InvoiceStatus::Pending {
             return Err(QuickLendXError::InvalidStatus);
         }
-        // (Optional: Only admin can verify, add check here if needed)
-        invoice.verify(&env, invoice.business.clone());
+        invoice.verify(&env, admin.clone());
         InvoiceStorage::update_invoice(&env, &invoice);
         emit_invoice_verified(&env, &invoice);
 
@@ -525,8 +528,14 @@ impl QuickLendXContract {
     }
 
     /// Set admin address (initialization function)
-    pub fn set_admin(env: Env, admin: Address) {
+    pub fn set_admin(env: Env, admin: Address) -> Result<(), QuickLendXError> {
+        if let Some(current_admin) = BusinessVerificationStorage::get_admin(&env) {
+            current_admin.require_auth();
+        } else {
+            admin.require_auth();
+        }
         BusinessVerificationStorage::set_admin(&env, &admin);
+        Ok(())
     }
 
     /// Get admin address

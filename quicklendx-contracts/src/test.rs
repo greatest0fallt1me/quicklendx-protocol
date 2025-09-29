@@ -1125,6 +1125,7 @@ fn test_verify_business() {
     let kyc_data = String::from_str(&env, "Business registration documents");
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Submit KYC application
@@ -1148,6 +1149,40 @@ fn test_verify_business() {
 }
 
 #[test]
+fn test_verify_invoice_requires_admin() {
+    let env = Env::default();
+    let contract_id = env.register(QuickLendXContract, ());
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    env.mock_all_auths();
+
+    let business = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let currency = Address::generate(&env);
+    let due_date = env.ledger().timestamp() + 86400;
+
+    let invoice_id = client.store_invoice(
+        &business,
+        &1000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Admin gating"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
+    assert!(client.try_verify_invoice(&invoice_id).is_err());
+
+    env.mock_all_auths();
+    client.set_admin(&admin);
+
+    client.verify_invoice(&invoice_id);
+
+    let invoice = client.get_invoice(&invoice_id);
+    assert_eq!(invoice.status, InvoiceStatus::Verified);
+}
+
+#[test]
 fn test_reject_business() {
     let env = Env::default();
     let contract_id = env.register(QuickLendXContract, ());
@@ -1159,6 +1194,7 @@ fn test_reject_business() {
     let rejection_reason = String::from_str(&env, "Incomplete documentation");
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Submit KYC application
@@ -1211,6 +1247,7 @@ fn test_upload_invoice_requires_verification() {
     let admin = Address::generate(&env);
     let kyc_data = String::from_str(&env, "Business registration documents");
 
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &kyc_data);
@@ -1262,6 +1299,7 @@ fn test_kyc_already_verified() {
     let kyc_data = String::from_str(&env, "Business registration documents");
 
     // Set admin and submit KYC
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &kyc_data);
@@ -1287,6 +1325,7 @@ fn test_kyc_resubmission_after_rejection() {
     let rejection_reason = String::from_str(&env, "Incomplete documentation");
 
     // Set admin and submit KYC
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &kyc_data);
@@ -1322,6 +1361,7 @@ fn test_verification_unauthorized_access() {
     let unauthorized_admin = Address::generate(&env);
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Submit KYC application
@@ -1347,6 +1387,7 @@ fn test_get_verification_lists() {
     let business3 = Address::generate(&env);
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Submit KYC applications
@@ -1383,6 +1424,7 @@ fn test_create_and_restore_backup() {
 
     // Set up admin
     let admin = Address::generate(&env);
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create test invoices
@@ -1450,6 +1492,7 @@ fn test_backup_validation() {
 
     // Set up admin
     let admin = Address::generate(&env);
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create test invoice
@@ -1495,6 +1538,7 @@ fn test_backup_cleanup() {
 
     // Set up admin
     let admin = Address::generate(&env);
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create multiple backups with simple descriptions
@@ -1524,6 +1568,7 @@ fn test_archive_backup() {
 
     // Set up admin
     let admin = Address::generate(&env);
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create backup
@@ -1560,6 +1605,7 @@ fn test_audit_trail_creation() {
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
     // Verify business setup
+    env.mock_all_auths();
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
@@ -1603,6 +1649,7 @@ fn test_audit_integrity_validation() {
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
     // Verify business setup
+    env.mock_all_auths();
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
@@ -1641,6 +1688,7 @@ fn test_audit_query_functionality() {
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
     // Verify business setup
+    env.mock_all_auths();
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
@@ -1709,6 +1757,7 @@ fn test_audit_statistics() {
     let due_date = env.ledger().timestamp() + 86400;
     let description = String::from_str(&env, "Test invoice");
     // Verify business setup
+    env.mock_all_auths();
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
@@ -1792,6 +1841,7 @@ fn test_notification_creation_on_invoice_upload() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Set up admin and verify business
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
@@ -1826,6 +1876,7 @@ fn test_notification_creation_on_bid_placement() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Set up admin and verify business
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
@@ -1870,6 +1921,7 @@ fn test_notification_creation_on_invoice_status_change() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Set up admin and verify business
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
@@ -1910,6 +1962,7 @@ fn test_notification_delivery_status_update() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Set up admin and verify business
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
@@ -1956,6 +2009,7 @@ fn test_user_notification_stats() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Set up admin and verify business
+    env.mock_all_auths();
     client.set_admin(&admin);
     env.mock_all_auths();
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
@@ -2011,6 +2065,7 @@ fn test_overdue_invoice_notifications() {
     token_client.approve(&investor, &contract_id, &initial_balance, &expiration);
 
     // Set up admin and verify business
+    env.mock_all_auths();
     client.set_admin(&admin);
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
@@ -2233,6 +2288,7 @@ fn test_dispute_under_review() {
     let description = String::from_str(&env, "Test invoice");
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create, verify invoice and create dispute
@@ -2275,6 +2331,7 @@ fn test_resolve_dispute() {
     let description = String::from_str(&env, "Test invoice");
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create, verify invoice and create dispute
@@ -2385,6 +2442,7 @@ fn test_get_invoices_by_dispute_status() {
     let description = String::from_str(&env, "Test invoice");
 
     // Set admin
+    env.mock_all_auths();
     client.set_admin(&admin);
 
     // Create, verify invoice and create dispute
