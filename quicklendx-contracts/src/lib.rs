@@ -31,7 +31,7 @@ use events::{
 use investment::{Investment, InvestmentStatus, InvestmentStorage};
 use invoice::{DisputeStatus, Invoice, InvoiceStatus, InvoiceStorage};
 use payments::{create_escrow, refund_escrow, release_escrow, EscrowStorage};
-use profits::calculate_profit as do_calculate_profit;
+use profits::{calculate_profit as do_calculate_profit, PlatformFee, PlatformFeeConfig};
 use settlement::settle_invoice as do_settle_invoice;
 use verification::{
     get_business_verification_status, reject_business, submit_kyc_application, validate_bid,
@@ -439,11 +439,24 @@ impl QuickLendXContract {
 
     /// Calculate profit and platform fee
     pub fn calculate_profit(
-        _env: Env,
+        env: Env,
         investment_amount: i128,
         payment_amount: i128,
     ) -> (i128, i128) {
-        do_calculate_profit(investment_amount, payment_amount)
+        do_calculate_profit(&env, investment_amount, payment_amount)
+    }
+
+    /// Retrieve the current platform fee configuration
+    pub fn get_platform_fee(env: Env) -> PlatformFeeConfig {
+        PlatformFee::get_config(&env)
+    }
+
+    /// Update the platform fee basis points (admin only)
+    pub fn set_platform_fee(env: Env, new_fee_bps: i128) -> Result<(), QuickLendXError> {
+        let admin =
+            BusinessVerificationStorage::get_admin(&env).ok_or(QuickLendXError::NotAdmin)?;
+        PlatformFee::set_config(&env, &admin, new_fee_bps)?;
+        Ok(())
     }
 
     // Rating Functions (from feat-invoice_rating_system)

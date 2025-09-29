@@ -39,7 +39,7 @@ pub fn settle_invoice(
     }
 
     // Calculate profit and platform fee
-    let (investor_return, platform_fee) = calculate_profit(investment.amount, payment_amount);
+    let (investor_return, platform_fee) = calculate_profit(env, investment.amount, payment_amount);
 
     // Transfer funds to investor and platform
     let business_address = invoice.business.clone();
