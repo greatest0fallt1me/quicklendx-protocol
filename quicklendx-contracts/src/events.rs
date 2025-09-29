@@ -41,6 +41,17 @@ pub fn emit_invoice_settled(
     );
 }
 
+pub fn emit_invoice_expired(env: &Env, invoice: &crate::invoice::Invoice) {
+    env.events().publish(
+        (symbol_short!("inv_exp"),),
+        (
+            invoice.id.clone(),
+            invoice.business.clone(),
+            invoice.due_date,
+        ),
+    );
+}
+
 pub fn emit_invoice_defaulted(env: &Env, invoice: &crate::invoice::Invoice) {
     env.events().publish(
         (symbol_short!("inv_def"),),

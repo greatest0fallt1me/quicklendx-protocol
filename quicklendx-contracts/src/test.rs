@@ -3,8 +3,7 @@ use crate::audit::{
     log_invoice_operation, AuditOperation, AuditOperationFilter, AuditQueryFilter, AuditStorage,
 };
 use crate::bid::{BidStatus, BidStorage};
-use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
-// Merged imports from both branches
+use soroban_sdk::{testutils::{Address as _, Ledger}, token, Address, BytesN, Env, String, Vec};
 use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory};
 
 #[test]
@@ -2235,6 +2234,63 @@ fn test_overdue_invoice_notifications() {
 
     // The overdue check function should complete successfully
     assert!(overdue_count >= 0);
+}
+
+#[test]
+fn test_invoice_expiration_triggers_default() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, QuickLendXContract);
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let business = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+
+    let currency = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = token::Client::new(&env, &currency);
+    let sac_client = token::StellarAssetClient::new(&env, &currency);
+
+    let initial_balance = 5_000i128;
+    sac_client.mint(&business, &initial_balance);
+    sac_client.mint(&investor, &initial_balance);
+
+    let expiration = env.ledger().sequence() + 1_000;
+    token_client.approve(&business, &contract_id, &initial_balance, &expiration);
+    token_client.approve(&investor, &contract_id, &initial_balance, &expiration);
+
+    client.set_admin(&admin);
+    client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
+    client.verify_business(&admin, &business);
+
+    let due_date = env.ledger().timestamp() + 60;
+    let invoice_id = client.store_invoice(
+        &business,
+        &1_000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Expiring invoice"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
+    client.verify_invoice(&invoice_id);
+    let bid_id = client.place_bid(&investor, &invoice_id, &1_000, &1_100);
+    client.accept_bid(&invoice_id, &bid_id);
+
+    let invoice = client.get_invoice(&invoice_id);
+    assert_eq!(invoice.status, InvoiceStatus::Funded);
+
+    env.ledger().set_timestamp(invoice.due_date + 1);
+
+    let defaulted = client.check_invoice_expiration(&invoice_id, &Some(0));
+    assert!(defaulted);
+
+    let updated_invoice = client.get_invoice(&invoice_id);
+    assert_eq!(updated_invoice.status, InvoiceStatus::Defaulted);
 }
 
 // Dispute Resolution System Tests (from main)

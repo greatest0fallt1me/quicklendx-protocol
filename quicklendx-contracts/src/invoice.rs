@@ -1,5 +1,9 @@
 use soroban_sdk::{contracttype, symbol_short, vec, Address, BytesN, Env, String, Vec};
 
+use crate::errors::QuickLendXError;
+
+const DEFAULT_INVOICE_GRACE_PERIOD: u64 = 14 * 24 * 60 * 60;
+
 /// Invoice status enumeration
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -83,8 +87,6 @@ pub struct Invoice {
 }
 
 // Use the main error enum from errors.rs
-use crate::errors::QuickLendXError;
-
 use crate::audit::{log_invoice_created, log_invoice_funded, log_invoice_status_change};
 
 impl Invoice {
@@ -166,9 +168,35 @@ impl Invoice {
         self.status == InvoiceStatus::Verified && self.funded_amount == 0
     }
 
+    pub const DEFAULT_GRACE_PERIOD: u64 = DEFAULT_INVOICE_GRACE_PERIOD;
+
     /// Check if invoice is overdue
     pub fn is_overdue(&self, current_timestamp: u64) -> bool {
         current_timestamp > self.due_date
+    }
+
+    /// Calculate the timestamp when the grace period ends
+    pub fn grace_deadline(&self, grace_period: u64) -> u64 {
+        self.due_date.saturating_add(grace_period)
+    }
+
+    /// Check if the invoice should be defaulted and handle it if necessary
+    pub fn check_and_handle_expiration(
+        &self,
+        env: &Env,
+        grace_period: u64,
+    ) -> Result<bool, QuickLendXError> {
+        if self.status != InvoiceStatus::Funded {
+            return Ok(false);
+        }
+
+        let now = env.ledger().timestamp();
+        if now <= self.grace_deadline(grace_period) {
+            return Ok(false);
+        }
+
+        crate::defaults::handle_default(env, &self.id)?;
+        Ok(true)
     }
 
     /// Mark invoice as funded with audit logging
