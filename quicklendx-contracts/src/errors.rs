@@ -38,6 +38,8 @@ pub enum QuickLendXError {
     InsufficientFunds = 1400,
     InvalidStatus = 1401,
     OperationNotAllowed = 1402,
+    PaymentTooLow = 1403,
+    PlatformAccountNotConfigured = 1404,
 
     // Rating errors (1500-1599)
     InvalidRating = 1500,
@@ -103,6 +105,8 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::InsufficientFunds => symbol_short!("INSUF"),
             QuickLendXError::InvalidStatus => symbol_short!("INV_ST"),
             QuickLendXError::OperationNotAllowed => symbol_short!("OP_NA"),
+            QuickLendXError::PaymentTooLow => symbol_short!("PAY_LOW"),
+            QuickLendXError::PlatformAccountNotConfigured => symbol_short!("PLT_NC"),
             QuickLendXError::InvalidRating => symbol_short!("INV_RT"),
             QuickLendXError::NotFunded => symbol_short!("NOT_FD"),
             QuickLendXError::AlreadyRated => symbol_short!("ALR_RT"),

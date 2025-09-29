@@ -49,7 +49,7 @@ fn test_store_invoice_validation() {
     let business = Address::generate(&env);
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
-    
+
     let invoice_id = client.store_invoice(
         &business,
         &1000,
@@ -78,7 +78,7 @@ fn test_get_business_invoices() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Create invoices for business1
-      let invoice1_id = client.store_invoice(
+    let invoice1_id = client.store_invoice(
         &business1,
         &1000,
         &currency,
@@ -142,7 +142,7 @@ fn test_get_invoices_by_status() {
         &Vec::new(&env),
     );
 
-      let invoice2_id = client.store_invoice(
+    let invoice2_id = client.store_invoice(
         &business,
         &2000,
         &currency,
@@ -223,7 +223,7 @@ fn test_get_available_invoices() {
         &Vec::new(&env),
     );
 
-      let invoice2_id = client.store_invoice(
+    let invoice2_id = client.store_invoice(
         &business,
         &2000,
         &currency,
@@ -799,7 +799,7 @@ fn test_add_invoice_rating_validation() {
     assert!(matches!(result, Err(_)));
 
     // Test rating on pending invoice (should fail)
-      let pending_invoice_id = client.store_invoice(
+    let pending_invoice_id = client.store_invoice(
         &business,
         &2000,
         &currency,
@@ -922,7 +922,10 @@ fn test_duplicate_rating_prevention() {
         if result.is_ok() {
             // If it succeeded, verify the rating count didn't increase
             let updated_invoice = InvoiceStorage::get_invoice(&env, &invoice_id).unwrap();
-            assert_eq!(updated_invoice.total_ratings, 1, "Duplicate rating should not be added");
+            assert_eq!(
+                updated_invoice.total_ratings, 1,
+                "Duplicate rating should not be added"
+            );
         }
     });
 
@@ -943,7 +946,7 @@ fn test_rating_queries() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Create and fund a single invoice first
-      let invoice1_id = client.store_invoice(
+    let invoice1_id = client.store_invoice(
         &business1,
         &1000,
         &currency,
@@ -1062,7 +1065,7 @@ fn test_rating_on_unfunded_invoice() {
     let due_date = env.ledger().timestamp() + 86400;
 
     // Create invoice but don't fund it
-      let invoice_id = client.store_invoice(
+    let invoice_id = client.store_invoice(
         &business,
         &1000,
         &currency,
@@ -1397,7 +1400,7 @@ fn test_create_and_restore_backup() {
         &Vec::new(&env),
     );
 
-      let invoice2_id = client.store_invoice(
+    let invoice2_id = client.store_invoice(
         &business,
         &2000,
         &currency,
@@ -1454,7 +1457,7 @@ fn test_backup_validation() {
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
 
-      client.store_invoice(
+    client.store_invoice(
         &business,
         &1000,
         &currency,
@@ -2322,7 +2325,7 @@ fn test_get_invoices_with_disputes() {
         &InvoiceCategory::Services,
         &Vec::new(&env),
     );
-    
+
     let invoice_id2 = client.upload_invoice(
         &business2,
         &amount,
