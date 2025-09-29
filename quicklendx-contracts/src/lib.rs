@@ -407,16 +407,8 @@ impl QuickLendXContract {
         env: Env,
         invoice_id: BytesN<32>,
         payment_amount: i128,
-        platform: Address,
-        platform_fee_bps: i128,
     ) -> Result<(), QuickLendXError> {
-        do_settle_invoice(
-            &env,
-            &invoice_id,
-            payment_amount,
-            &platform,
-            platform_fee_bps,
-        )
+        do_settle_invoice(&env, &invoice_id, payment_amount)
     }
 
     /// Handle invoice default (admin or automated process)
@@ -429,9 +421,8 @@ impl QuickLendXContract {
         _env: Env,
         investment_amount: i128,
         payment_amount: i128,
-        platform_fee_bps: i128,
     ) -> (i128, i128) {
-        do_calculate_profit(investment_amount, payment_amount, platform_fee_bps)
+        do_calculate_profit(investment_amount, payment_amount)
     }
 
     // Rating Functions (from feat-invoice_rating_system)

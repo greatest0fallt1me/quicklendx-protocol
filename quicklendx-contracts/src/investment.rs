@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, BytesN, Env};
+use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Symbol};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -6,6 +6,7 @@ pub enum InvestmentStatus {
     Active,
     Withdrawn,
     Completed,
+    Defaulted,
 }
 
 #[contracttype]
@@ -22,10 +23,12 @@ pub struct Investment {
 pub struct InvestmentStorage;
 
 impl InvestmentStorage {
+    fn invoice_index_key(invoice_id: &BytesN<32>) -> (Symbol, BytesN<32>) {
+        (symbol_short!("inv_map"), invoice_id.clone())
+    }
+
     /// Generate a unique investment ID using timestamp and counter
     pub fn generate_unique_investment_id(env: &Env) -> BytesN<32> {
-        use soroban_sdk::symbol_short;
-
         let timestamp = env.ledger().timestamp();
         let counter_key = symbol_short!("invst_cnt");
         let counter = env.storage().instance().get(&counter_key).unwrap_or(0u64);
@@ -51,13 +54,28 @@ impl InvestmentStorage {
         env.storage()
             .instance()
             .set(&investment.investment_id, investment);
+
+        env.storage().instance().set(
+            &Self::invoice_index_key(&investment.invoice_id),
+            &investment.investment_id,
+        );
     }
     pub fn get_investment(env: &Env, investment_id: &BytesN<32>) -> Option<Investment> {
         env.storage().instance().get(investment_id)
+    }
+    pub fn get_investment_by_invoice(env: &Env, invoice_id: &BytesN<32>) -> Option<Investment> {
+        let index_key = Self::invoice_index_key(invoice_id);
+        let investment_id: Option<BytesN<32>> = env.storage().instance().get(&index_key);
+        investment_id.and_then(|id| Self::get_investment(env, &id))
     }
     pub fn update_investment(env: &Env, investment: &Investment) {
         env.storage()
             .instance()
             .set(&investment.investment_id, investment);
+
+        env.storage().instance().set(
+            &Self::invoice_index_key(&investment.invoice_id),
+            &investment.investment_id,
+        );
     }
 }
