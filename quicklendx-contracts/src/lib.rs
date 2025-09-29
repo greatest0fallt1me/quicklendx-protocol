@@ -283,6 +283,26 @@ impl QuickLendXContract {
         BidStorage::get_bid(&env, &bid_id)
     }
 
+    /// Get the highest ranked bid for an invoice
+    pub fn get_best_bid(env: Env, invoice_id: BytesN<32>) -> Option<Bid> {
+        BidStorage::get_best_bid(&env, &invoice_id)
+    }
+
+    /// Get all bids for an invoice sorted using the platform ranking rules
+    pub fn get_ranked_bids(env: Env, invoice_id: BytesN<32>) -> Vec<Bid> {
+        BidStorage::rank_bids(&env, &invoice_id)
+    }
+
+    /// Get bids filtered by status
+    pub fn get_bids_by_status(env: Env, invoice_id: BytesN<32>, status: BidStatus) -> Vec<Bid> {
+        BidStorage::get_bids_by_status(&env, &invoice_id, status)
+    }
+
+    /// Get bids filtered by investor
+    pub fn get_bids_by_investor(env: Env, invoice_id: BytesN<32>, investor: Address) -> Vec<Bid> {
+        BidStorage::get_bids_by_investor(&env, &invoice_id, &investor)
+    }
+
     /// Place a bid on an invoice
     pub fn place_bid(
         env: Env,

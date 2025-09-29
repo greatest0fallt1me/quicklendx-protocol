@@ -1,3 +1,4 @@
+use core::cmp::Ordering;
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Vec};
 
 #[contracttype]
@@ -23,6 +24,10 @@ pub struct Bid {
 pub struct BidStorage;
 
 impl BidStorage {
+    fn invoice_key(invoice_id: &BytesN<32>) -> (soroban_sdk::Symbol, BytesN<32>) {
+        (symbol_short!("bids"), invoice_id.clone())
+    }
+
     pub fn store_bid(env: &Env, bid: &Bid) {
         env.storage().instance().set(&bid.bid_id, bid);
     }
@@ -33,17 +38,146 @@ impl BidStorage {
         env.storage().instance().set(&bid.bid_id, bid);
     }
     pub fn get_bids_for_invoice(env: &Env, invoice_id: &BytesN<32>) -> Vec<BytesN<32>> {
-        let key = (symbol_short!("bids"), invoice_id.clone());
         env.storage()
             .instance()
-            .get(&key)
+            .get(&Self::invoice_key(invoice_id))
             .unwrap_or_else(|| Vec::new(env))
     }
     pub fn add_bid_to_invoice(env: &Env, invoice_id: &BytesN<32>, bid_id: &BytesN<32>) {
         let mut bids = Self::get_bids_for_invoice(env, invoice_id);
-        bids.push_back(bid_id.clone());
-        let key = (symbol_short!("bids"), invoice_id.clone());
-        env.storage().instance().set(&key, &bids);
+        let mut exists = false;
+        let mut idx: u32 = 0;
+        while idx < bids.len() {
+            if bids.get(idx).unwrap() == *bid_id {
+                exists = true;
+                break;
+            }
+            idx += 1;
+        }
+        if !exists {
+            bids.push_back(bid_id.clone());
+            env.storage()
+                .instance()
+                .set(&Self::invoice_key(invoice_id), &bids);
+        }
+    }
+    pub fn remove_bid_from_invoice(env: &Env, invoice_id: &BytesN<32>, bid_id: &BytesN<32>) {
+        let bids = Self::get_bids_for_invoice(env, invoice_id);
+        let mut filtered = Vec::new(env);
+        let mut idx: u32 = 0;
+        while idx < bids.len() {
+            let current = bids.get(idx).unwrap();
+            if current != *bid_id {
+                filtered.push_back(current);
+            }
+            idx += 1;
+        }
+        env.storage()
+            .instance()
+            .set(&Self::invoice_key(invoice_id), &filtered);
+    }
+    pub fn get_bid_records_for_invoice(env: &Env, invoice_id: &BytesN<32>) -> Vec<Bid> {
+        let mut bids = Vec::new(env);
+        for bid_id in Self::get_bids_for_invoice(env, invoice_id).iter() {
+            if let Some(bid) = Self::get_bid(env, &bid_id) {
+                bids.push_back(bid);
+            }
+        }
+        bids
+    }
+    pub fn get_bids_by_status(env: &Env, invoice_id: &BytesN<32>, status: BidStatus) -> Vec<Bid> {
+        let mut filtered = Vec::new(env);
+        let records = Self::get_bid_records_for_invoice(env, invoice_id);
+        let mut idx: u32 = 0;
+        while idx < records.len() {
+            let bid = records.get(idx).unwrap();
+            if bid.status == status {
+                filtered.push_back(bid);
+            }
+            idx += 1;
+        }
+        filtered
+    }
+    pub fn get_bids_by_investor(
+        env: &Env,
+        invoice_id: &BytesN<32>,
+        investor: &Address,
+    ) -> Vec<Bid> {
+        let mut filtered = Vec::new(env);
+        let records = Self::get_bid_records_for_invoice(env, invoice_id);
+        let mut idx: u32 = 0;
+        while idx < records.len() {
+            let bid = records.get(idx).unwrap();
+            if &bid.investor == investor {
+                filtered.push_back(bid);
+            }
+            idx += 1;
+        }
+        filtered
+    }
+    pub fn compare_bids(bid1: &Bid, bid2: &Bid) -> Ordering {
+        let profit1 = bid1.expected_return - bid1.bid_amount;
+        let profit2 = bid2.expected_return - bid2.bid_amount;
+        if profit1 != profit2 {
+            return profit1.cmp(&profit2);
+        }
+        if bid1.expected_return != bid2.expected_return {
+            return bid1.expected_return.cmp(&bid2.expected_return);
+        }
+        if bid1.bid_amount != bid2.bid_amount {
+            return bid1.bid_amount.cmp(&bid2.bid_amount);
+        }
+        if bid1.timestamp != bid2.timestamp {
+            return bid2.timestamp.cmp(&bid1.timestamp);
+        }
+        Ordering::Equal
+    }
+    pub fn get_best_bid(env: &Env, invoice_id: &BytesN<32>) -> Option<Bid> {
+        let records = Self::get_bid_records_for_invoice(env, invoice_id);
+        if records.len() == 0 {
+            return None;
+        }
+        let mut best = records.get(0).unwrap();
+        let mut idx: u32 = 1;
+        while idx < records.len() {
+            let candidate = records.get(idx).unwrap();
+            if Self::compare_bids(&candidate, &best) == Ordering::Greater {
+                best = candidate;
+            }
+            idx += 1;
+        }
+        Some(best)
+    }
+    pub fn rank_bids(env: &Env, invoice_id: &BytesN<32>) -> Vec<Bid> {
+        let mut ranked = Vec::new(env);
+        let mut remaining = Self::get_bid_records_for_invoice(env, invoice_id);
+
+        while remaining.len() > 0 {
+            let mut best_idx: u32 = 0;
+            let mut best_bid = remaining.get(0).unwrap();
+            let mut idx: u32 = 1;
+            while idx < remaining.len() {
+                let candidate = remaining.get(idx).unwrap();
+                if Self::compare_bids(&candidate, &best_bid) == Ordering::Greater {
+                    best_idx = idx;
+                    best_bid = candidate;
+                }
+                idx += 1;
+            }
+            ranked.push_back(best_bid);
+
+            let mut new_remaining = Vec::new(env);
+            let mut copy_idx: u32 = 0;
+            while copy_idx < remaining.len() {
+                if copy_idx != best_idx {
+                    new_remaining.push_back(remaining.get(copy_idx).unwrap());
+                }
+                copy_idx += 1;
+            }
+            remaining = new_remaining;
+        }
+
+        ranked
     }
     /// Generates a unique 32-byte bid ID using timestamp and a simple counter.
     /// This approach avoids potential serialization issues with large counters.
