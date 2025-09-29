@@ -2091,6 +2091,34 @@ fn test_user_notification_stats() {
 }
 
 #[test]
+fn test_platform_fee_configuration() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, QuickLendXContract);
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+
+    let default_config = client.get_platform_fee();
+    assert_eq!(default_config.fee_bps, 200);
+
+    client.set_platform_fee(&300);
+    let updated_config = client.get_platform_fee();
+    assert_eq!(updated_config.fee_bps, 300);
+    assert_eq!(updated_config.updated_by, admin);
+
+    let (investor_return, platform_fee) = client.calculate_profit(&1_000, &1_200);
+    assert_eq!(investor_return, 1_194);
+    assert_eq!(platform_fee, 6);
+
+    let invalid = client.try_set_platform_fee(&1_200);
+    let err = invalid.err().expect("expected contract error");
+    let contract_error = err.expect("expected contract invoke error");
+    assert_eq!(contract_error, QuickLendXError::InvalidAmount);
+}
+
+#[test]
 fn test_overdue_invoice_notifications() {
     let env = Env::default();
     let contract_id = env.register_contract(None, QuickLendXContract);

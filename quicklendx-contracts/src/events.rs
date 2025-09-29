@@ -1,6 +1,7 @@
 use crate::audit::{AuditLogEntry, AuditOperation};
 use crate::invoice::Invoice;
 use crate::payments::{Escrow, EscrowStatus};
+use crate::profits::PlatformFeeConfig;
 use soroban_sdk::{symbol_short, Address, BytesN, Env, String};
 
 pub fn emit_invoice_uploaded(env: &Env, invoice: &Invoice) {
@@ -44,6 +45,13 @@ pub fn emit_invoice_defaulted(env: &Env, invoice: &crate::invoice::Invoice) {
     env.events().publish(
         (symbol_short!("inv_def"),),
         (invoice.id.clone(), invoice.business.clone()),
+    );
+}
+
+pub fn emit_platform_fee_updated(env: &Env, config: &PlatformFeeConfig) {
+    env.events().publish(
+        (symbol_short!("fee_upd"),),
+        (config.fee_bps, config.updated_at, config.updated_by.clone()),
     );
 }
 
