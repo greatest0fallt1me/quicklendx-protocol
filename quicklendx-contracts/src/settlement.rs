@@ -44,17 +44,23 @@ pub fn settle_invoice(
     // Transfer funds to investor and platform
     let business_address = invoice.business.clone();
     let investor_address = investor.clone();
-    let investor_paid = transfer_funds(env, &business_address, &investor_address, investor_return);
-    if !investor_paid {
-        return Err(QuickLendXError::InsufficientFunds);
-    }
+    transfer_funds(
+        env,
+        &invoice.currency,
+        &business_address,
+        &investor_address,
+        investor_return,
+    )?;
 
     if platform_fee > 0 {
         let platform_account = env.current_contract_address();
-        let platform_paid = transfer_funds(env, &business_address, &platform_account, platform_fee);
-        if !platform_paid {
-            return Err(QuickLendXError::InsufficientFunds);
-        }
+        transfer_funds(
+            env,
+            &invoice.currency,
+            &business_address,
+            &platform_account,
+            platform_fee,
+        )?;
     }
 
     // Update invoice status

@@ -2,7 +2,7 @@ use super::*;
 use crate::audit::{
     log_invoice_operation, AuditOperation, AuditOperationFilter, AuditQueryFilter, AuditStorage,
 };
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env, String, Vec};
+use soroban_sdk::{testutils::Address as _, token, Address, BytesN, Env, String, Vec};
 // Merged imports from both branches
 use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory};
 
@@ -1988,14 +1988,30 @@ fn test_overdue_invoice_notifications() {
     let contract_id = env.register_contract(None, QuickLendXContract);
     let client = QuickLendXContractClient::new(&env, &contract_id);
 
+    env.mock_all_auths();
+
     let business = Address::generate(&env);
     let investor = Address::generate(&env);
     let admin = Address::generate(&env);
-    let currency = Address::generate(&env);
+
+    // Register a Stellar Asset Contract to represent the currency used in tests
+    let token_admin = Address::generate(&env);
+    let currency = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = token::Client::new(&env, &currency);
+    let sac_client = token::StellarAssetClient::new(&env, &currency);
+
+    let initial_balance = 10_000i128;
+    sac_client.mint(&business, &initial_balance);
+    sac_client.mint(&investor, &initial_balance);
+
+    let expiration = env.ledger().sequence() + 1_000;
+    token_client.approve(&business, &contract_id, &initial_balance, &expiration);
+    token_client.approve(&investor, &contract_id, &initial_balance, &expiration);
 
     // Set up admin and verify business
     client.set_admin(&admin);
-    env.mock_all_auths();
     client.submit_kyc_application(&business, &String::from_str(&env, "KYC data"));
     client.verify_business(&admin, &business);
 

@@ -1,4 +1,5 @@
 use crate::errors::QuickLendXError;
+use soroban_sdk::token;
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env};
 
 #[contracttype]
@@ -86,6 +87,14 @@ pub fn create_escrow(
     amount: i128,
     currency: &Address,
 ) -> Result<BytesN<32>, QuickLendXError> {
+    if amount <= 0 {
+        return Err(QuickLendXError::InvalidAmount);
+    }
+
+    // Move funds from investor into contract-controlled escrow
+    let contract_address = env.current_contract_address();
+    transfer_funds(env, currency, investor, &contract_address, amount)?;
+
     let escrow_id = EscrowStorage::generate_unique_escrow_id(env);
     let escrow = Escrow {
         escrow_id: escrow_id.clone(),
@@ -111,11 +120,15 @@ pub fn release_escrow(env: &Env, invoice_id: &BytesN<32>) -> Result<(), QuickLen
         return Err(QuickLendXError::InvalidStatus);
     }
 
-    // Transfer funds from escrow to business
-    let transfer_success = transfer_funds(env, &escrow.investor, &escrow.business, escrow.amount);
-    if !transfer_success {
-        return Err(QuickLendXError::InsufficientFunds);
-    }
+    // Transfer funds from escrow (contract) to business
+    let contract_address = env.current_contract_address();
+    transfer_funds(
+        env,
+        &escrow.currency,
+        &contract_address,
+        &escrow.business,
+        escrow.amount,
+    )?;
 
     // Update escrow status
     escrow.status = EscrowStatus::Released;
@@ -133,11 +146,15 @@ pub fn refund_escrow(env: &Env, invoice_id: &BytesN<32>) -> Result<(), QuickLend
         return Err(QuickLendXError::InvalidStatus);
     }
 
-    // Refund funds to investor
-    let transfer_success = transfer_funds(env, &escrow.business, &escrow.investor, escrow.amount);
-    if !transfer_success {
-        return Err(QuickLendXError::InsufficientFunds);
-    }
+    // Refund funds from escrow (contract) back to investor
+    let contract_address = env.current_contract_address();
+    transfer_funds(
+        env,
+        &escrow.currency,
+        &contract_address,
+        &escrow.investor,
+        escrow.amount,
+    )?;
 
     // Update escrow status
     escrow.status = EscrowStatus::Refunded;
@@ -147,15 +164,40 @@ pub fn refund_escrow(env: &Env, invoice_id: &BytesN<32>) -> Result<(), QuickLend
 }
 
 /// Transfer funds between addresses
-/// TODO: Integrate with Soroban payment primitives for XLM/USDC
-/// For now, this is a stub that always returns true
-/// Replace with actual payment logic when implementing token transfers
-pub fn transfer_funds(env: &Env, from: &Address, to: &Address, amount: i128) -> bool {
-    // Placeholder for actual token transfer implementation
-    // This should integrate with Soroban's token interface
-    // Example implementation would involve:
-    // 1. Get token contract instance
-    // 2. Call transfer method on token contract
-    // 3. Handle success/failure appropriately
-    true
+pub fn transfer_funds(
+    env: &Env,
+    currency: &Address,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+) -> Result<(), QuickLendXError> {
+    if amount <= 0 {
+        return Err(QuickLendXError::InvalidAmount);
+    }
+
+    if from == to {
+        return Ok(());
+    }
+
+    let token_client = token::Client::new(env, currency);
+    let contract_address = env.current_contract_address();
+
+    // Ensure sufficient balance exists before attempting transfer
+    let available_balance = token_client.balance(from);
+    if available_balance < amount {
+        return Err(QuickLendXError::InsufficientFunds);
+    }
+
+    if from == &contract_address {
+        token_client.transfer(from, to, &amount);
+        return Ok(());
+    }
+
+    let allowance = token_client.allowance(from, &contract_address);
+    if allowance < amount {
+        return Err(QuickLendXError::OperationNotAllowed);
+    }
+
+    token_client.transfer_from(&contract_address, from, to, &amount);
+    Ok(())
 }
