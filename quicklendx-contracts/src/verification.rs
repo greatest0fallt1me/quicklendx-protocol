@@ -205,6 +205,7 @@ pub fn validate_bid(
         return Err(QuickLendXError::InvalidAmount);
     }
 
+    BidStorage::cleanup_expired_bids(env, &invoice.id);
     let existing_bids = BidStorage::get_bids_for_invoice(env, &invoice.id);
     for bid_id in existing_bids.iter() {
         if let Some(existing_bid) = BidStorage::get_bid(env, &bid_id) {
