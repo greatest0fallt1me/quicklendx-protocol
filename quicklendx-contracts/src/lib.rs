@@ -303,6 +303,11 @@ impl QuickLendXContract {
         BidStorage::get_bids_by_investor(&env, &invoice_id, &investor)
     }
 
+    /// Remove bids that have passed their expiration window
+    pub fn cleanup_expired_bids(env: Env, invoice_id: BytesN<32>) -> u32 {
+        BidStorage::cleanup_expired_bids(&env, &invoice_id)
+    }
+
     /// Place a bid on an invoice
     pub fn place_bid(
         env: Env,
@@ -319,17 +324,20 @@ impl QuickLendXContract {
         }
         // Only the investor can place their own bid
         investor.require_auth();
+        BidStorage::cleanup_expired_bids(&env, &invoice_id);
         validate_bid(&env, &invoice, bid_amount, expected_return, &investor)?;
         // Create bid
         let bid_id = BidStorage::generate_unique_bid_id(&env);
+        let current_timestamp = env.ledger().timestamp();
         let bid = Bid {
             bid_id: bid_id.clone(),
             invoice_id: invoice_id.clone(),
             investor: investor.clone(),
             bid_amount,
             expected_return,
-            timestamp: env.ledger().timestamp(),
+            timestamp: current_timestamp,
             status: BidStatus::Placed,
+            expiration_timestamp: Bid::default_expiration(current_timestamp),
         };
         BidStorage::store_bid(&env, &bid);
         // Track bid for this invoice
@@ -347,8 +355,13 @@ impl QuickLendXContract {
         invoice_id: BytesN<32>,
         bid_id: BytesN<32>,
     ) -> Result<(), QuickLendXError> {
+        BidStorage::cleanup_expired_bids(&env, &invoice_id);
         let mut invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
             .ok_or(QuickLendXError::InvoiceNotFound)?;
+        let mut bid =
+            BidStorage::get_bid(&env, &bid_id).ok_or(QuickLendXError::StorageKeyNotFound)?;
+        let invoice_id = bid.invoice_id.clone();
+        BidStorage::cleanup_expired_bids(&env, &invoice_id);
         let mut bid =
             BidStorage::get_bid(&env, &bid_id).ok_or(QuickLendXError::StorageKeyNotFound)?;
         // Only the business owner can accept a bid

@@ -481,6 +481,49 @@ fn test_bid_ranking_and_filters() {
 }
 
 #[test]
+fn test_bid_expiration_cleanup() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, QuickLendXContract);
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let business = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let currency = Address::generate(&env);
+    let due_date = env.ledger().timestamp() + 86_400;
+
+    let invoice_id = client.store_invoice(
+        &business,
+        &1_000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Expiration invoice"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+    client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+
+    let bid_id = client.place_bid(&investor, &invoice_id, &500, &650);
+
+    let bid = client.get_bid(&bid_id).unwrap();
+    assert_eq!(bid.status, BidStatus::Placed);
+
+    let ranked = client.get_ranked_bids(&invoice_id);
+    assert_eq!(ranked.len(), 1);
+
+    env.ledger().set_timestamp(bid.expiration_timestamp + 1);
+
+    let expired_count = client.cleanup_expired_bids(&invoice_id);
+    assert_eq!(expired_count, 1);
+
+    let bid_after = client.get_bid(&bid_id).unwrap();
+    assert_eq!(bid_after.status, BidStatus::Expired);
+
+    assert!(client.get_ranked_bids(&invoice_id).is_empty());
+    assert!(client.get_best_bid(&invoice_id).is_none());
+}
+
+#[test]
 fn test_bid_validation_rules() {
     let env = Env::default();
     env.mock_all_auths();

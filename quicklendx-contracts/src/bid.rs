@@ -1,12 +1,17 @@
 use core::cmp::Ordering;
 use soroban_sdk::{contracttype, symbol_short, Address, BytesN, Env, Vec};
 
+use crate::events::emit_bid_expired;
+
+const DEFAULT_BID_TTL: u64 = 7 * 24 * 60 * 60;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BidStatus {
     Placed,
     Withdrawn,
     Accepted,
+    Expired,
 }
 
 #[contracttype]
@@ -19,6 +24,17 @@ pub struct Bid {
     pub expected_return: i128,
     pub timestamp: u64,
     pub status: BidStatus,
+    pub expiration_timestamp: u64,
+}
+
+impl Bid {
+    pub fn is_expired(&self, current_timestamp: u64) -> bool {
+        current_timestamp > self.expiration_timestamp
+    }
+
+    pub fn default_expiration(now: u64) -> u64 {
+        now.saturating_add(DEFAULT_BID_TTL)
+    }
 }
 
 pub struct BidStorage;
@@ -76,7 +92,40 @@ impl BidStorage {
             .instance()
             .set(&Self::invoice_key(invoice_id), &filtered);
     }
+    fn refresh_expired_bids(env: &Env, invoice_id: &BytesN<32>) -> u32 {
+        let current_timestamp = env.ledger().timestamp();
+        let bid_ids = Self::get_bids_for_invoice(env, invoice_id);
+        let mut active = Vec::new(env);
+        let mut expired = 0u32;
+        let mut idx: u32 = 0;
+        while idx < bid_ids.len() {
+            let bid_id = bid_ids.get(idx).unwrap();
+            if let Some(mut bid) = Self::get_bid(env, &bid_id) {
+                if bid.status == BidStatus::Placed && bid.is_expired(current_timestamp) {
+                    bid.status = BidStatus::Expired;
+                    Self::update_bid(env, &bid);
+                    emit_bid_expired(env, &bid);
+                    expired += 1;
+                } else {
+                    active.push_back(bid_id);
+                }
+            }
+            idx += 1;
+        }
+
+        env.storage()
+            .instance()
+            .set(&Self::invoice_key(invoice_id), &active);
+
+        expired
+    }
+
+    pub fn cleanup_expired_bids(env: &Env, invoice_id: &BytesN<32>) -> u32 {
+        Self::refresh_expired_bids(env, invoice_id)
+    }
+
     pub fn get_bid_records_for_invoice(env: &Env, invoice_id: &BytesN<32>) -> Vec<Bid> {
+        let _ = Self::refresh_expired_bids(env, invoice_id);
         let mut bids = Vec::new(env);
         for bid_id in Self::get_bids_for_invoice(env, invoice_id).iter() {
             if let Some(bid) = Self::get_bid(env, &bid_id) {
@@ -134,35 +183,53 @@ impl BidStorage {
     }
     pub fn get_best_bid(env: &Env, invoice_id: &BytesN<32>) -> Option<Bid> {
         let records = Self::get_bid_records_for_invoice(env, invoice_id);
-        if records.len() == 0 {
-            return None;
-        }
-        let mut best = records.get(0).unwrap();
-        let mut idx: u32 = 1;
+        let mut best: Option<Bid> = None;
+        let mut idx: u32 = 0;
         while idx < records.len() {
             let candidate = records.get(idx).unwrap();
-            if Self::compare_bids(&candidate, &best) == Ordering::Greater {
-                best = candidate;
+            if candidate.status != BidStatus::Placed {
+                idx += 1;
+                continue;
+            }
+            best = match best {
+                None => Some(candidate),
+                Some(current) => {
+                    if Self::compare_bids(&candidate, &current) == Ordering::Greater {
+                        Some(candidate)
+                    } else {
+                        Some(current)
+                    }
+                }
+            };
+            idx += 1;
+        }
+        best
+    }
+    pub fn rank_bids(env: &Env, invoice_id: &BytesN<32>) -> Vec<Bid> {
+        let records = Self::get_bid_records_for_invoice(env, invoice_id);
+        let mut remaining = Vec::new(env);
+        let mut idx: u32 = 0;
+        while idx < records.len() {
+            let bid = records.get(idx).unwrap();
+            if bid.status == BidStatus::Placed {
+                remaining.push_back(bid);
             }
             idx += 1;
         }
-        Some(best)
-    }
-    pub fn rank_bids(env: &Env, invoice_id: &BytesN<32>) -> Vec<Bid> {
+
         let mut ranked = Vec::new(env);
-        let mut remaining = Self::get_bid_records_for_invoice(env, invoice_id);
 
         while remaining.len() > 0 {
             let mut best_idx: u32 = 0;
             let mut best_bid = remaining.get(0).unwrap();
-            let mut idx: u32 = 1;
-            while idx < remaining.len() {
-                let candidate = remaining.get(idx).unwrap();
+            let mut search_idx: u32 = 1;
+            while search_idx < remaining.len() {
+                let candidate = remaining.get(search_idx).unwrap();
                 if Self::compare_bids(&candidate, &best_bid) == Ordering::Greater {
-                    best_idx = idx;
+                    best_idx = search_idx;
                     best_bid = candidate;
                 }
-                idx += 1;
+                search_idx += 1;
             }
             ranked.push_back(best_bid);
 
