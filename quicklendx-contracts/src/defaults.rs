@@ -1,6 +1,7 @@
 use crate::errors::QuickLendXError;
 use crate::events::{
     emit_dispute_created, emit_dispute_resolved, emit_dispute_under_review, emit_invoice_defaulted,
+    emit_invoice_expired,
 };
 use crate::investment::{InvestmentStatus, InvestmentStorage};
 use crate::invoice::{Dispute, DisputeStatus, InvoiceStatus, InvoiceStorage};
@@ -16,8 +17,11 @@ pub fn handle_default(env: &Env, invoice_id: &BytesN<32>) -> Result<(), QuickLen
     if !invoice.is_overdue(env.ledger().timestamp()) {
         return Err(QuickLendXError::OperationNotAllowed);
     }
+    InvoiceStorage::remove_from_status_invoices(env, &InvoiceStatus::Funded, invoice_id);
     invoice.mark_as_defaulted();
     InvoiceStorage::update_invoice(env, &invoice);
+    InvoiceStorage::add_to_status_invoices(env, &InvoiceStatus::Defaulted, invoice_id);
+    emit_invoice_expired(env, &invoice);
     if let Some(mut investment) = InvestmentStorage::get_investment_by_invoice(env, invoice_id) {
         investment.status = InvestmentStatus::Defaulted;
         InvestmentStorage::update_investment(env, &investment);

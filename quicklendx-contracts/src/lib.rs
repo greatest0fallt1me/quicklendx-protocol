@@ -705,6 +705,14 @@ impl QuickLendXContract {
 
     /// Check for overdue invoices and send notifications (admin or automated process)
     pub fn check_overdue_invoices(env: Env) -> Result<u32, QuickLendXError> {
+        Self::check_overdue_invoices_grace(env, Invoice::DEFAULT_GRACE_PERIOD)
+    }
+
+    /// Check for overdue invoices with a custom grace period (in seconds)
+    pub fn check_overdue_invoices_grace(
+        env: Env,
+        grace_period: u64,
+    ) -> Result<u32, QuickLendXError> {
         let current_timestamp = env.ledger().timestamp();
         let funded_invoices = InvoiceStorage::get_invoices_by_status(&env, &InvoiceStatus::Funded);
         let mut overdue_count = 0u32;
@@ -712,14 +720,26 @@ impl QuickLendXContract {
         for invoice_id in funded_invoices.iter() {
             if let Some(invoice) = InvoiceStorage::get_invoice(&env, &invoice_id) {
                 if invoice.is_overdue(current_timestamp) {
-                    // Send overdue notification
                     let _ = NotificationSystem::notify_payment_overdue(&env, &invoice);
                     overdue_count += 1;
                 }
+                let _ = invoice.check_and_handle_expiration(&env, grace_period)?;
             }
         }
 
         Ok(overdue_count)
+    }
+
+    /// Check whether a specific invoice has expired and trigger default handling when necessary
+    pub fn check_invoice_expiration(
+        env: Env,
+        invoice_id: BytesN<32>,
+        grace_period: Option<u64>,
+    ) -> Result<bool, QuickLendXError> {
+        let invoice = InvoiceStorage::get_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::InvoiceNotFound)?;
+        let grace = grace_period.unwrap_or(Invoice::DEFAULT_GRACE_PERIOD);
+        invoice.check_and_handle_expiration(&env, grace)
     }
 
     /// Create a backup of all invoice data
