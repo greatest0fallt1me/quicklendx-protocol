@@ -32,7 +32,9 @@ use investment::{Investment, InvestmentStatus, InvestmentStorage};
 use invoice::{DisputeStatus, Invoice, InvoiceStatus, InvoiceStorage};
 use payments::{create_escrow, refund_escrow, release_escrow, EscrowStorage};
 use profits::{calculate_profit as do_calculate_profit, PlatformFee, PlatformFeeConfig};
-use settlement::settle_invoice as do_settle_invoice;
+use settlement::{
+    process_partial_payment as do_process_partial_payment, settle_invoice as do_settle_invoice,
+};
 use verification::{
     get_business_verification_status, reject_business, submit_kyc_application, validate_bid,
     verify_business, verify_invoice_data, BusinessVerificationStorage,
@@ -443,6 +445,16 @@ impl QuickLendXContract {
         payment_amount: i128,
     ) -> Result<(), QuickLendXError> {
         do_settle_invoice(&env, &invoice_id, payment_amount)
+    }
+
+    /// Process a partial payment towards an invoice
+    pub fn process_partial_payment(
+        env: Env,
+        invoice_id: BytesN<32>,
+        payment_amount: i128,
+        transaction_id: String,
+    ) -> Result<(), QuickLendXError> {
+        do_process_partial_payment(&env, &invoice_id, payment_amount, transaction_id)
     }
 
     /// Handle invoice default (admin or automated process)

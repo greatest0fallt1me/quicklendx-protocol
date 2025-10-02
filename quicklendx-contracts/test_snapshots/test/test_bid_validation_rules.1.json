@@ -298,6 +298,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "payment_history"
+                              },
+                              "val": {
+                                "vec": []
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "ratings"
                               },
                               "val": {
@@ -328,6 +336,17 @@
                               },
                               "val": {
                                 "vec": []
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_paid"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
                               }
                             },
                             {

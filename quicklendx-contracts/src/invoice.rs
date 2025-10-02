@@ -1,3 +1,4 @@
+use core::cmp::{max, min};
 use soroban_sdk::{contracttype, symbol_short, vec, Address, BytesN, Env, String, Vec};
 
 use crate::errors::QuickLendXError;
@@ -61,29 +62,40 @@ pub struct InvoiceRating {
     pub rated_at: u64,     // Timestamp of rating
 }
 
+/// Individual payment record for an invoice
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PaymentRecord {
+    pub amount: i128,           // Amount paid in this transaction
+    pub timestamp: u64,         // When the payment was recorded
+    pub transaction_id: String, // External transaction reference
+}
+
 /// Core invoice data structure
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Invoice {
-    pub id: BytesN<32>,                // Unique invoice identifier
-    pub business: Address,             // Business that uploaded the invoice
-    pub amount: i128,                  // Total invoice amount
-    pub currency: Address,             // Currency token address (XLM = Address::random())
-    pub due_date: u64,                 // Due date timestamp
-    pub status: InvoiceStatus,         // Current status of the invoice
-    pub created_at: u64,               // Creation timestamp
-    pub description: String,           // Invoice description/metadata
-    pub category: InvoiceCategory,     // Invoice category
-    pub tags: Vec<String>,             // Invoice tags for better discoverability
-    pub funded_amount: i128,           // Amount funded by investors
-    pub funded_at: Option<u64>,        // When the invoice was funded
-    pub investor: Option<Address>,     // Address of the investor who funded
-    pub settled_at: Option<u64>,       // When the invoice was settled
-    pub average_rating: Option<u32>,   // Average rating (1-5)
-    pub total_ratings: u32,            // Total number of ratings
-    pub ratings: Vec<InvoiceRating>,   // List of all ratings
-    pub dispute_status: DisputeStatus, // Current dispute status
-    pub dispute: Dispute,              // Dispute details if any
+    pub id: BytesN<32>,                      // Unique invoice identifier
+    pub business: Address,                   // Business that uploaded the invoice
+    pub amount: i128,                        // Total invoice amount
+    pub currency: Address,                   // Currency token address (XLM = Address::random())
+    pub due_date: u64,                       // Due date timestamp
+    pub status: InvoiceStatus,               // Current status of the invoice
+    pub created_at: u64,                     // Creation timestamp
+    pub description: String,                 // Invoice description/metadata
+    pub category: InvoiceCategory,           // Invoice category
+    pub tags: Vec<String>,                   // Invoice tags for better discoverability
+    pub funded_amount: i128,                 // Amount funded by investors
+    pub funded_at: Option<u64>,              // When the invoice was funded
+    pub investor: Option<Address>,           // Address of the investor who funded
+    pub settled_at: Option<u64>,             // When the invoice was settled
+    pub average_rating: Option<u32>,         // Average rating (1-5)
+    pub total_ratings: u32,                  // Total number of ratings
+    pub ratings: Vec<InvoiceRating>,         // List of all ratings
+    pub dispute_status: DisputeStatus,       // Current dispute status
+    pub dispute: Dispute,                    // Dispute details if any
+    pub total_paid: i128,                    // Aggregate amount paid towards the invoice
+    pub payment_history: Vec<PaymentRecord>, // History of partial payments
 }
 
 // Use the main error enum from errors.rs
@@ -138,6 +150,8 @@ impl Invoice {
                 ),
                 resolved_at: 0,
             },
+            total_paid: 0,
+            payment_history: vec![env],
         };
 
         // Log invoice creation
@@ -232,6 +246,45 @@ impl Invoice {
 
         // Log status change
         log_invoice_status_change(env, self.id.clone(), actor, old_status, self.status.clone());
+    }
+
+    /// Add a payment record and update totals
+    pub fn record_payment(
+        &mut self,
+        env: &Env,
+        amount: i128,
+        transaction_id: String,
+    ) -> Result<u32, QuickLendXError> {
+        if amount <= 0 {
+            return Err(QuickLendXError::InvalidAmount);
+        }
+
+        let record = PaymentRecord {
+            amount,
+            timestamp: env.ledger().timestamp(),
+            transaction_id,
+        };
+        self.payment_history.push_back(record);
+        self.total_paid = self.total_paid.saturating_add(amount);
+
+        Ok(self.payment_progress())
+    }
+
+    /// Calculate the payment progress percentage (0-100)
+    pub fn payment_progress(&self) -> u32 {
+        if self.amount <= 0 {
+            return 0;
+        }
+
+        let capped_total = max(self.total_paid, 0i128);
+        let mut percentage = (capped_total.saturating_mul(100i128)) / max(self.amount, 1i128);
+        percentage = min(percentage, 100i128);
+        percentage as u32
+    }
+
+    /// Check if the invoice has been fully paid
+    pub fn is_fully_paid(&self) -> bool {
+        self.total_paid >= self.amount
     }
 
     /// Verify the invoice with audit logging
