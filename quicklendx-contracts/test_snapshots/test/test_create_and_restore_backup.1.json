@@ -289,6 +289,38 @@
                             },
                             {
                               "key": {
+                                "symbol": "metadata_customer_address"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_customer_name"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_line_items"
+                              },
+                              "val": {
+                                "vec": []
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_notes"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_tax_id"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
                                 "symbol": "payment_history"
                               },
                               "val": {
@@ -531,6 +563,38 @@
                             {
                               "key": {
                                 "symbol": "investor"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_customer_address"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_customer_name"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_line_items"
+                              },
+                              "val": {
+                                "vec": []
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_notes"
+                              },
+                              "val": "void"
+                            },
+                            {
+                              "key": {
+                                "symbol": "metadata_tax_id"
                               },
                               "val": "void"
                             },
@@ -1141,6 +1205,38 @@
                                 },
                                 {
                                   "key": {
+                                    "symbol": "metadata_customer_address"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_customer_name"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_line_items"
+                                  },
+                                  "val": {
+                                    "vec": []
+                                  }
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_notes"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_tax_id"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
                                     "symbol": "payment_history"
                                   },
                                   "val": {
@@ -1378,6 +1474,38 @@
                                 {
                                   "key": {
                                     "symbol": "investor"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_customer_address"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_customer_name"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_line_items"
+                                  },
+                                  "val": {
+                                    "vec": []
+                                  }
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_notes"
+                                  },
+                                  "val": "void"
+                                },
+                                {
+                                  "key": {
+                                    "symbol": "metadata_tax_id"
                                   },
                                   "val": "void"
                                 },

@@ -4,7 +4,7 @@ use crate::audit::{
 };
 use crate::bid::{BidStatus, BidStorage};
 use crate::investment::InvestmentStorage;
-use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory};
+use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory, InvoiceMetadata, LineItemRecord};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token, Address, BytesN, Env, String, Vec,
@@ -204,6 +204,132 @@ fn test_update_invoice_status() {
     let verified_invoices = client.get_invoices_by_status(&InvoiceStatus::Verified);
     assert_eq!(verified_invoices.len(), 1);
     assert!(verified_invoices.contains(&invoice_id));
+}
+
+#[test]
+fn test_update_invoice_metadata_and_queries() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(QuickLendXContract, ());
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let business = Address::generate(&env);
+    let currency = Address::generate(&env);
+    let due_date = env.ledger().timestamp() + 86400;
+
+    let invoice_id = client.store_invoice(
+        &business,
+        &1_000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Metadata invoice"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
+    let mut line_items = Vec::new(&env);
+    line_items.push_back(LineItemRecord(
+        String::from_str(&env, "Consulting"),
+        5,
+        200,
+        1_000,
+    ));
+
+    let metadata = InvoiceMetadata {
+        customer_name: String::from_str(&env, "Acme Corp"),
+        customer_address: String::from_str(&env, "123 Market St"),
+        tax_id: String::from_str(&env, "TAX-123"),
+        line_items,
+        notes: String::from_str(&env, "Net 30"),
+    };
+
+    client.update_invoice_metadata(&invoice_id, &metadata);
+
+    let invoice = client.get_invoice(&invoice_id);
+    let stored_metadata = invoice.metadata().expect("metadata must be stored");
+    assert_eq!(stored_metadata.customer_name, metadata.customer_name);
+    assert_eq!(stored_metadata.tax_id, metadata.tax_id);
+    assert_eq!(stored_metadata.line_items.len(), 1);
+    let stored_line_item = stored_metadata.line_items.get(0).expect("line item");
+    assert_eq!(stored_line_item.3, 1_000);
+
+    let customer_invoices = client.get_invoices_by_customer(&metadata.customer_name);
+    assert!(customer_invoices.contains(&invoice_id));
+
+    let tax_invoices = client.get_invoices_by_tax_id(&metadata.tax_id);
+    assert!(tax_invoices.contains(&invoice_id));
+
+    client.clear_invoice_metadata(&invoice_id);
+
+    let cleared_invoice = client.get_invoice(&invoice_id);
+    assert!(cleared_invoice.metadata().is_none());
+
+    let customer_invoices_after_clear = client.get_invoices_by_customer(&metadata.customer_name);
+    assert!(!customer_invoices_after_clear.contains(&invoice_id));
+}
+
+#[test]
+fn test_invoice_metadata_validation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(QuickLendXContract, ());
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let business = Address::generate(&env);
+    let currency = Address::generate(&env);
+    let due_date = env.ledger().timestamp() + 86400;
+
+    let invoice_id = client.store_invoice(
+        &business,
+        &1_000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Invalid metadata invoice"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
+    let mut invalid_items = Vec::new(&env);
+    invalid_items.push_back(LineItemRecord(
+        String::from_str(&env, "Consulting"),
+        2,
+        250,
+        500,
+    ));
+
+    let invalid_metadata = InvoiceMetadata {
+        customer_name: String::from_str(&env, "Beta LLC"),
+        customer_address: String::from_str(&env, "456 Elm St"),
+        tax_id: String::from_str(&env, "TAX-456"),
+        line_items: invalid_items,
+        notes: String::from_str(&env, "Review"),
+    };
+
+    let result = client.try_update_invoice_metadata(&invoice_id, &invalid_metadata);
+    let err = result.err().expect("expected contract error");
+    let contract_error = err.expect("expected contract invoke error");
+    assert_eq!(contract_error, QuickLendXError::InvoiceAmountInvalid);
+
+    let mut invalid_line = Vec::new(&env);
+    invalid_line.push_back(LineItemRecord(
+        String::from_str(&env, "Consulting"),
+        0,
+        1,
+        0,
+    ));
+
+    let invalid_line_metadata = InvoiceMetadata {
+        customer_name: String::from_str(&env, "Gamma LLC"),
+        customer_address: String::from_str(&env, "789 Oak St"),
+        tax_id: String::from_str(&env, "TAX-789"),
+        line_items: invalid_line,
+        notes: String::from_str(&env, "Invalid"),
+    };
+
+    let result_line = client.try_update_invoice_metadata(&invoice_id, &invalid_line_metadata);
+    let err_line = result_line.err().expect("expected error");
+    let contract_error_line = err_line.expect("expected contract invoke error");
+    assert_eq!(contract_error_line, QuickLendXError::InvalidAmount);
 }
 
 #[test]
