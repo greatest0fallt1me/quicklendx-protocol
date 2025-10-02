@@ -5,10 +5,21 @@ use crate::audit::{
 use crate::bid::{BidStatus, BidStorage};
 use crate::investment::InvestmentStorage;
 use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory, InvoiceMetadata, LineItemRecord};
+use crate::verification::BusinessVerificationStatus;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     token, Address, BytesN, Env, String, Vec,
 };
+
+fn verify_investor_for_test(
+    env: &Env,
+    client: &QuickLendXContractClient,
+    investor: &Address,
+    limit: i128,
+) {
+    client.submit_investor_kyc(investor, &String::from_str(env, "Investor KYC"));
+    client.verify_investor(investor, &limit);
+}
 
 #[test]
 fn test_store_invoice() {
@@ -333,6 +344,66 @@ fn test_invoice_metadata_validation() {
 }
 
 #[test]
+fn test_investor_verification_enforced() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, QuickLendXContract);
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let business = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let currency = Address::generate(&env);
+    let due_date = env.ledger().timestamp() + 86400;
+
+    client.set_admin(&admin);
+    client.submit_kyc_application(&business, &String::from_str(&env, "Business KYC"));
+    client.verify_business(&admin, &business);
+
+    let invoice_id = client.store_invoice(
+        &business,
+        &1_000,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Investor verification invoice"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
+    client.verify_invoice(&invoice_id);
+
+    let bid_attempt = client.try_place_bid(&investor, &invoice_id, &500, &600);
+    let err = bid_attempt.err().expect("expected contract error");
+    let contract_error = err.expect("expected contract invoke error");
+    assert_eq!(contract_error, QuickLendXError::BusinessNotVerified);
+
+    client.submit_investor_kyc(&investor, &String::from_str(&env, "Investor KYC"));
+
+    let pending_attempt = client.try_place_bid(&investor, &invoice_id, &500, &600);
+    let pending_err = pending_attempt.err().expect("expected pending error");
+    let pending_contract_error = pending_err.expect("expected contract invoke error");
+    assert_eq!(pending_contract_error, QuickLendXError::KYCAlreadyPending);
+
+    client.verify_investor(&investor, &1_000);
+
+    let verification = client
+        .get_investor_verification(&investor)
+        .expect("verification record");
+    assert_eq!(verification.investment_limit, 1_000);
+    assert!(matches!(
+        verification.status,
+        BusinessVerificationStatus::Verified
+    ));
+
+    let _bid_id = client.place_bid(&investor, &invoice_id, &500, &600);
+
+    let over_limit = client.try_place_bid(&investor, &invoice_id, &1_500, &1_700);
+    let limit_err = over_limit.err().expect("expected limit error");
+    let limit_contract_error = limit_err.expect("expected invoke error");
+    assert_eq!(limit_contract_error, QuickLendXError::InvalidAmount);
+}
+
+#[test]
 fn test_get_available_invoices() {
     let env = Env::default();
     let contract_id = env.register(QuickLendXContract, ());
@@ -476,6 +547,8 @@ fn test_simple_bid_storage() {
     let investor = Address::generate(&env);
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     // Create and verify invoice
     let invoice_id = client.store_invoice(
@@ -489,6 +562,7 @@ fn test_simple_bid_storage() {
     );
 
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
 
     // Place a single bid to test basic functionality
     let bid_id = client.place_bid(&investor, &invoice_id, &900, &1000);
@@ -529,6 +603,8 @@ fn test_unique_bid_id_generation() {
     let investor = Address::generate(&env);
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     // Create and verify invoice
     let invoice_id = client.store_invoice(
@@ -542,6 +618,7 @@ fn test_unique_bid_id_generation() {
     );
 
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
 
     // Place first bid
     let bid_id_1 = client.place_bid(&investor, &invoice_id, &900, &1100);
@@ -571,6 +648,8 @@ fn test_bid_ranking_and_filters() {
     let investor_c = Address::generate(&env);
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86_400;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     let invoice_id = client.store_invoice(
         &business,
@@ -582,6 +661,9 @@ fn test_bid_ranking_and_filters() {
         &Vec::new(&env),
     );
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor_a, 10_000);
+    verify_investor_for_test(&env, &client, &investor_b, 10_000);
+    verify_investor_for_test(&env, &client, &investor_c, 10_000);
 
     let bid_a = client.place_bid(&investor_a, &invoice_id, &700, &880);
     let bid_b = client.place_bid(&investor_b, &invoice_id, &800, &1_050);
@@ -621,6 +703,8 @@ fn test_bid_expiration_cleanup() {
     let investor = Address::generate(&env);
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86_400;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     let invoice_id = client.store_invoice(
         &business,
@@ -632,6 +716,7 @@ fn test_bid_expiration_cleanup() {
         &Vec::new(&env),
     );
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
 
     let bid_id = client.place_bid(&investor, &invoice_id, &500, &650);
 
@@ -665,6 +750,8 @@ fn test_bid_validation_rules() {
     let other_investor = Address::generate(&env);
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     // Create and verify invoice
     let invoice_id = client.store_invoice(
@@ -677,6 +764,8 @@ fn test_bid_validation_rules() {
         &Vec::new(&env),
     );
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &other_investor, 10_000);
 
     // Amount below minimum
     assert!(client
@@ -719,6 +808,16 @@ fn test_escrow_creation_on_bid_acceptance() {
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
     let bid_amount = 1000i128;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     // Create and verify invoice
     let invoice_id = client.store_invoice(
@@ -731,6 +830,11 @@ fn test_escrow_creation_on_bid_acceptance() {
         &Vec::new(&env),
     );
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
 
     // Place bid
     let bid_id = client.place_bid(&investor, &invoice_id, &bid_amount, &1100);
@@ -765,6 +869,12 @@ fn test_escrow_release_on_verification() {
     let currency = Address::generate(&env);
     let due_date = env.ledger().timestamp() + 86400;
     let bid_amount = 1000i128;
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
+    let admin = Address::generate(&env);
+    client.set_admin(&admin);
 
     // Create invoice
     let invoice_id = client.store_invoice(
@@ -777,6 +887,9 @@ fn test_escrow_release_on_verification() {
         &Vec::new(&env),
     );
     client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
 
     // Place and accept bid (creates escrow)
     let bid_id = client.place_bid(&investor, &invoice_id, &bid_amount, &1100);
@@ -2172,6 +2285,7 @@ fn test_notification_creation_on_bid_placement() {
         &Vec::new(&env),
     );
     client.verify_invoice(&invoice_id);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
 
     // Place bid (should trigger notification to business)
     let _bid_id = client.place_bid(&investor, &invoice_id, &1000, &1100);
@@ -2391,6 +2505,7 @@ fn test_overdue_invoice_notifications() {
 
     // Verify and fund the invoice
     client.verify_invoice(&invoice_id);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
     let bid_id = client.place_bid(&investor, &invoice_id, &1000, &1100);
     client.accept_bid(&invoice_id, &bid_id);
 
@@ -2451,6 +2566,7 @@ fn test_invoice_expiration_triggers_default() {
     );
 
     client.verify_invoice(&invoice_id);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
     let bid_id = client.place_bid(&investor, &invoice_id, &1_000, &1_100);
     client.accept_bid(&invoice_id, &bid_id);
 
@@ -2508,6 +2624,7 @@ fn test_partial_payments_trigger_settlement() {
     );
 
     client.verify_invoice(&invoice_id);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
     let bid_id = client.place_bid(&investor, &invoice_id, &1_000, &1_100);
     client.accept_bid(&invoice_id, &bid_id);
 

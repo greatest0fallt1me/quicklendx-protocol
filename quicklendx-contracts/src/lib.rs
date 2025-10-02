@@ -26,8 +26,8 @@ use defaults::{
 use errors::QuickLendXError;
 use events::{
     emit_audit_query, emit_audit_validation, emit_escrow_created, emit_escrow_refunded,
-    emit_escrow_released, emit_invoice_metadata_cleared, emit_invoice_metadata_updated,
-    emit_invoice_uploaded, emit_invoice_verified,
+    emit_escrow_released, emit_investor_verified, emit_invoice_metadata_cleared,
+    emit_invoice_metadata_updated, emit_invoice_uploaded, emit_invoice_verified,
 };
 use investment::{Investment, InvestmentStatus, InvestmentStorage};
 use invoice::{DisputeStatus, Invoice, InvoiceMetadata, InvoiceStatus, InvoiceStorage};
@@ -37,8 +37,12 @@ use settlement::{
     process_partial_payment as do_process_partial_payment, settle_invoice as do_settle_invoice,
 };
 use verification::{
-    get_business_verification_status, reject_business, submit_kyc_application, validate_bid,
-    validate_invoice_metadata, verify_business, verify_invoice_data, BusinessVerificationStorage,
+    get_business_verification_status, get_investor_verification as do_get_investor_verification,
+    reject_business, reject_investor as do_reject_investor,
+    submit_investor_kyc as do_submit_investor_kyc, submit_kyc_application, validate_bid,
+    validate_invoice_metadata, verify_business, verify_investor as do_verify_investor,
+    verify_invoice_data, BusinessVerificationStatus, BusinessVerificationStorage,
+    InvestorVerification,
 };
 
 use crate::backup::{Backup, BackupStatus, BackupStorage};
@@ -378,6 +382,21 @@ impl QuickLendXContract {
         }
         // Only the investor can place their own bid
         investor.require_auth();
+
+        let verification = do_get_investor_verification(&env, &investor)
+            .ok_or(QuickLendXError::BusinessNotVerified)?;
+        match verification.status {
+            BusinessVerificationStatus::Verified => {
+                if bid_amount > verification.investment_limit {
+                    return Err(QuickLendXError::InvalidAmount);
+                }
+            }
+            BusinessVerificationStatus::Pending => return Err(QuickLendXError::KYCAlreadyPending),
+            BusinessVerificationStatus::Rejected => {
+                return Err(QuickLendXError::BusinessNotVerified)
+            }
+        }
+
         BidStorage::cleanup_expired_bids(&env, &invoice_id);
         validate_bid(&env, &invoice, bid_amount, expected_return, &investor)?;
         // Create bid
@@ -606,6 +625,40 @@ impl QuickLendXContract {
         kyc_data: String,
     ) -> Result<(), QuickLendXError> {
         submit_kyc_application(&env, &business, kyc_data)
+    }
+
+    /// Submit investor verification request
+    pub fn submit_investor_kyc(
+        env: Env,
+        investor: Address,
+        kyc_data: String,
+    ) -> Result<(), QuickLendXError> {
+        do_submit_investor_kyc(&env, &investor, kyc_data)
+    }
+
+    /// Verify an investor and set an investment limit
+    pub fn verify_investor(
+        env: Env,
+        investor: Address,
+        investment_limit: i128,
+    ) -> Result<(), QuickLendXError> {
+        let admin =
+            BusinessVerificationStorage::get_admin(&env).ok_or(QuickLendXError::NotAdmin)?;
+        let verification = do_verify_investor(&env, &admin, &investor, investment_limit)?;
+        emit_investor_verified(&env, &verification);
+        Ok(())
+    }
+
+    /// Reject an investor verification request
+    pub fn reject_investor(env: Env, investor: Address) -> Result<(), QuickLendXError> {
+        let admin =
+            BusinessVerificationStorage::get_admin(&env).ok_or(QuickLendXError::NotAdmin)?;
+        do_reject_investor(&env, &admin, &investor)
+    }
+
+    /// Get investor verification record if available
+    pub fn get_investor_verification(env: Env, investor: Address) -> Option<InvestorVerification> {
+        do_get_investor_verification(&env, &investor)
     }
 
     /// Verify business (admin only)
