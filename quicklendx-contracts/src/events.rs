@@ -3,6 +3,7 @@ use crate::bid::Bid;
 use crate::invoice::{Invoice, InvoiceMetadata};
 use crate::payments::{Escrow, EscrowStatus};
 use crate::profits::PlatformFeeConfig;
+use crate::verification::InvestorVerification;
 use soroban_sdk::{symbol_short, Address, BytesN, Env, String};
 
 pub fn emit_invoice_uploaded(env: &Env, invoice: &Invoice) {
@@ -47,6 +48,17 @@ pub fn emit_invoice_metadata_cleared(env: &Env, invoice: &Invoice) {
     env.events().publish(
         (symbol_short!("inv_mclr"),),
         (invoice.id.clone(), invoice.business.clone()),
+    );
+}
+
+pub fn emit_investor_verified(env: &Env, verification: &InvestorVerification) {
+    env.events().publish(
+        (symbol_short!("inv_veri"),),
+        (
+            verification.investor.clone(),
+            verification.investment_limit,
+            verification.verified_at,
+        ),
     );
 }
 
