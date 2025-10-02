@@ -562,6 +562,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "payment_history"
+                              },
+                              "val": {
+                                "vec": []
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "ratings"
                               },
                               "val": {
@@ -592,6 +600,17 @@
                               },
                               "val": {
                                 "vec": []
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "total_paid"
+                              },
+                              "val": {
+                                "i128": {
+                                  "hi": 0,
+                                  "lo": 0
+                                }
                               }
                             },
                             {
@@ -1091,6 +1110,14 @@
                                   "hi": 0,
                                   "lo": 1100
                                 }
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "expiration_timestamp"
+                              },
+                              "val": {
+                                "u64": 604800
                               }
                             },
                             {

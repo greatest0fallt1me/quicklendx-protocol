@@ -42,6 +42,27 @@ pub fn emit_invoice_settled(
     );
 }
 
+pub fn emit_partial_payment(
+    env: &Env,
+    invoice: &Invoice,
+    payment_amount: i128,
+    total_paid: i128,
+    progress: u32,
+    transaction_id: String,
+) {
+    env.events().publish(
+        (symbol_short!("inv_pp"),),
+        (
+            invoice.id.clone(),
+            invoice.business.clone(),
+            payment_amount,
+            total_paid,
+            progress,
+            transaction_id,
+        ),
+    );
+}
+
 pub fn emit_invoice_expired(env: &Env, invoice: &crate::invoice::Invoice) {
     env.events().publish(
         (symbol_short!("inv_exp"),),
