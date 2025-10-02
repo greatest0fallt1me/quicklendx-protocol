@@ -1,6 +1,6 @@
 use crate::bid::{BidStatus, BidStorage};
 use crate::errors::QuickLendXError;
-use crate::invoice::Invoice;
+use crate::invoice::{Invoice, InvoiceMetadata};
 use soroban_sdk::{contracttype, symbol_short, vec, Address, Env, String, Vec};
 
 #[contracttype]
@@ -406,6 +406,52 @@ pub fn validate_invoice_tags(tags: &Vec<String>) -> Result<(), QuickLendXError> 
 
         // Check for empty tags (length 0 is already checked above)
         // Note: Soroban String doesn't have trim() method
+    }
+
+    Ok(())
+}
+
+/// Validate structured invoice metadata against the invoice amount
+pub fn validate_invoice_metadata(
+    metadata: &InvoiceMetadata,
+    invoice_amount: i128,
+) -> Result<(), QuickLendXError> {
+    if metadata.customer_name.len() == 0 {
+        return Err(QuickLendXError::InvalidDescription);
+    }
+
+    if metadata.customer_address.len() == 0 {
+        return Err(QuickLendXError::InvalidDescription);
+    }
+
+    if metadata.tax_id.len() == 0 {
+        return Err(QuickLendXError::InvalidDescription);
+    }
+
+    if metadata.line_items.len() == 0 {
+        return Err(QuickLendXError::InvalidDescription);
+    }
+
+    let mut computed_total = 0i128;
+    for record in metadata.line_items.iter() {
+        if record.0.len() == 0 {
+            return Err(QuickLendXError::InvalidDescription);
+        }
+
+        if record.1 <= 0 || record.2 < 0 {
+            return Err(QuickLendXError::InvalidAmount);
+        }
+
+        let expected_total = record.1.saturating_mul(record.2);
+        if expected_total != record.3 {
+            return Err(QuickLendXError::InvalidAmount);
+        }
+
+        computed_total = computed_total.saturating_add(record.3);
+    }
+
+    if computed_total != invoice_amount {
+        return Err(QuickLendXError::InvoiceAmountInvalid);
     }
 
     Ok(())

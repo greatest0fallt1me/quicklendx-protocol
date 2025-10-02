@@ -62,6 +62,22 @@ pub struct InvoiceRating {
     pub rated_at: u64,     // Timestamp of rating
 }
 
+/// Compact representation of a line item stored on-chain
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineItemRecord(pub String, pub i128, pub i128, pub i128);
+
+/// Metadata associated with an invoice
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvoiceMetadata {
+    pub customer_name: String,
+    pub customer_address: String,
+    pub tax_id: String,
+    pub line_items: Vec<LineItemRecord>,
+    pub notes: String,
+}
+
 /// Individual payment record for an invoice
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -75,14 +91,19 @@ pub struct PaymentRecord {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Invoice {
-    pub id: BytesN<32>,                      // Unique invoice identifier
-    pub business: Address,                   // Business that uploaded the invoice
-    pub amount: i128,                        // Total invoice amount
-    pub currency: Address,                   // Currency token address (XLM = Address::random())
-    pub due_date: u64,                       // Due date timestamp
-    pub status: InvoiceStatus,               // Current status of the invoice
-    pub created_at: u64,                     // Creation timestamp
-    pub description: String,                 // Invoice description/metadata
+    pub id: BytesN<32>,        // Unique invoice identifier
+    pub business: Address,     // Business that uploaded the invoice
+    pub amount: i128,          // Total invoice amount
+    pub currency: Address,     // Currency token address (XLM = Address::random())
+    pub due_date: u64,         // Due date timestamp
+    pub status: InvoiceStatus, // Current status of the invoice
+    pub created_at: u64,       // Creation timestamp
+    pub description: String,   // Invoice description/metadata
+    pub metadata_customer_name: Option<String>,
+    pub metadata_customer_address: Option<String>,
+    pub metadata_tax_id: Option<String>,
+    pub metadata_notes: Option<String>,
+    pub metadata_line_items: Vec<LineItemRecord>,
     pub category: InvoiceCategory,           // Invoice category
     pub tags: Vec<String>,                   // Invoice tags for better discoverability
     pub funded_amount: i128,                 // Amount funded by investors
@@ -125,6 +146,11 @@ impl Invoice {
             status: InvoiceStatus::Pending,
             created_at,
             description,
+            metadata_customer_name: None,
+            metadata_customer_address: None,
+            metadata_tax_id: None,
+            metadata_notes: None,
+            metadata_line_items: Vec::new(env),
             category,
             tags,
             funded_amount: 0,
@@ -285,6 +311,42 @@ impl Invoice {
     /// Check if the invoice has been fully paid
     pub fn is_fully_paid(&self) -> bool {
         self.total_paid >= self.amount
+    }
+
+    /// Retrieve metadata if present
+    pub fn metadata(&self) -> Option<InvoiceMetadata> {
+        let name = self.metadata_customer_name.clone()?;
+        let address = self.metadata_customer_address.clone()?;
+        let tax = self.metadata_tax_id.clone()?;
+        let notes = self.metadata_notes.clone()?;
+
+        Some(InvoiceMetadata {
+            customer_name: name,
+            customer_address: address,
+            tax_id: tax,
+            line_items: self.metadata_line_items.clone(),
+            notes,
+        })
+    }
+
+    /// Update structured metadata attached to the invoice
+    pub fn set_metadata(&mut self, env: &Env, metadata: Option<InvoiceMetadata>) {
+        match metadata {
+            Some(data) => {
+                self.metadata_customer_name = Some(data.customer_name);
+                self.metadata_customer_address = Some(data.customer_address);
+                self.metadata_tax_id = Some(data.tax_id);
+                self.metadata_notes = Some(data.notes);
+                self.metadata_line_items = data.line_items;
+            }
+            None => {
+                self.metadata_customer_name = None;
+                self.metadata_customer_address = None;
+                self.metadata_tax_id = None;
+                self.metadata_notes = None;
+                self.metadata_line_items = Vec::new(env);
+            }
+        }
     }
 
     /// Verify the invoice with audit logging
@@ -732,5 +794,91 @@ impl InvoiceStorage {
             InvoiceCategory::Healthcare,
             InvoiceCategory::Other,
         ]
+    }
+
+    fn metadata_customer_key(customer: &String) -> (soroban_sdk::Symbol, String) {
+        (symbol_short!("meta_c"), customer.clone())
+    }
+
+    fn metadata_tax_key(tax_id: &String) -> (soroban_sdk::Symbol, String) {
+        (symbol_short!("meta_t"), tax_id.clone())
+    }
+
+    fn add_to_metadata_index(
+        env: &Env,
+        key: &(soroban_sdk::Symbol, String),
+        invoice_id: &BytesN<32>,
+    ) {
+        let mut invoices = env
+            .storage()
+            .instance()
+            .get(key)
+            .unwrap_or_else(|| Vec::new(env));
+        for existing in invoices.iter() {
+            if existing == *invoice_id {
+                return;
+            }
+        }
+        invoices.push_back(invoice_id.clone());
+        env.storage().instance().set(key, &invoices);
+    }
+
+    fn remove_from_metadata_index(
+        env: &Env,
+        key: &(soroban_sdk::Symbol, String),
+        invoice_id: &BytesN<32>,
+    ) {
+        let existing: Option<Vec<BytesN<32>>> = env.storage().instance().get(key);
+        if let Some(invoices) = existing {
+            let mut filtered = Vec::new(env);
+            for id in invoices.iter() {
+                if id != *invoice_id {
+                    filtered.push_back(id);
+                }
+            }
+            env.storage().instance().set(key, &filtered);
+        }
+    }
+
+    pub fn add_metadata_indexes(env: &Env, invoice: &Invoice) {
+        if let Some(name) = &invoice.metadata_customer_name {
+            if name.len() > 0 {
+                let key = Self::metadata_customer_key(name);
+                Self::add_to_metadata_index(env, &key, &invoice.id);
+            }
+        }
+
+        if let Some(tax) = &invoice.metadata_tax_id {
+            if tax.len() > 0 {
+                let key = Self::metadata_tax_key(tax);
+                Self::add_to_metadata_index(env, &key, &invoice.id);
+            }
+        }
+    }
+
+    pub fn remove_metadata_indexes(env: &Env, metadata: &InvoiceMetadata, invoice_id: &BytesN<32>) {
+        if metadata.customer_name.len() > 0 {
+            let key = Self::metadata_customer_key(&metadata.customer_name);
+            Self::remove_from_metadata_index(env, &key, invoice_id);
+        }
+
+        if metadata.tax_id.len() > 0 {
+            let key = Self::metadata_tax_key(&metadata.tax_id);
+            Self::remove_from_metadata_index(env, &key, invoice_id);
+        }
+    }
+
+    pub fn get_invoices_by_customer(env: &Env, customer_name: &String) -> Vec<BytesN<32>> {
+        env.storage()
+            .instance()
+            .get(&Self::metadata_customer_key(customer_name))
+            .unwrap_or_else(|| Vec::new(env))
+    }
+
+    pub fn get_invoices_by_tax_id(env: &Env, tax_id: &String) -> Vec<BytesN<32>> {
+        env.storage()
+            .instance()
+            .get(&Self::metadata_tax_key(tax_id))
+            .unwrap_or_else(|| Vec::new(env))
     }
 }

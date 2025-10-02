@@ -1,6 +1,6 @@
-use crate::audit::{AuditLogEntry, AuditOperation};
+use crate::audit::AuditLogEntry;
 use crate::bid::Bid;
-use crate::invoice::Invoice;
+use crate::invoice::{Invoice, InvoiceMetadata};
 use crate::payments::{Escrow, EscrowStatus};
 use crate::profits::PlatformFeeConfig;
 use soroban_sdk::{symbol_short, Address, BytesN, Env, String};
@@ -21,6 +21,31 @@ pub fn emit_invoice_uploaded(env: &Env, invoice: &Invoice) {
 pub fn emit_invoice_verified(env: &Env, invoice: &Invoice) {
     env.events().publish(
         (symbol_short!("inv_ver"),),
+        (invoice.id.clone(), invoice.business.clone()),
+    );
+}
+
+pub fn emit_invoice_metadata_updated(env: &Env, invoice: &Invoice, metadata: &InvoiceMetadata) {
+    let mut total = 0i128;
+    for record in metadata.line_items.iter() {
+        total = total.saturating_add(record.3);
+    }
+
+    env.events().publish(
+        (symbol_short!("inv_meta"),),
+        (
+            invoice.id.clone(),
+            metadata.customer_name.clone(),
+            metadata.tax_id.clone(),
+            metadata.line_items.len() as u32,
+            total,
+        ),
+    );
+}
+
+pub fn emit_invoice_metadata_cleared(env: &Env, invoice: &Invoice) {
+    env.events().publish(
+        (symbol_short!("inv_mclr"),),
         (invoice.id.clone(), invoice.business.clone()),
     );
 }
