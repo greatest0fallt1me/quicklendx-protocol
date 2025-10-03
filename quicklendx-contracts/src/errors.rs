@@ -40,6 +40,7 @@ pub enum QuickLendXError {
     OperationNotAllowed = 1402,
     PaymentTooLow = 1403,
     PlatformAccountNotConfigured = 1404,
+    InvalidCoveragePercentage = 1405,
 
     // Rating errors (1500-1599)
     InvalidRating = 1500,
@@ -56,9 +57,8 @@ pub enum QuickLendXError {
 
     // Audit errors (1700-1799)
     AuditLogNotFound = 1700,
-    AuditValidationFailed = 1701,
-    AuditIntegrityError = 1702,
-    AuditQueryError = 1703,
+    AuditIntegrityError = 1701,
+    AuditQueryError = 1702,
 
     // Category and Tag errors (1800-1899)
     InvalidTag = 1802,
@@ -107,6 +107,7 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::OperationNotAllowed => symbol_short!("OP_NA"),
             QuickLendXError::PaymentTooLow => symbol_short!("PAY_LOW"),
             QuickLendXError::PlatformAccountNotConfigured => symbol_short!("PLT_NC"),
+            QuickLendXError::InvalidCoveragePercentage => symbol_short!("INS_CV"),
             QuickLendXError::InvalidRating => symbol_short!("INV_RT"),
             QuickLendXError::NotFunded => symbol_short!("NOT_FD"),
             QuickLendXError::AlreadyRated => symbol_short!("ALR_RT"),
@@ -117,7 +118,6 @@ impl From<QuickLendXError> for Symbol {
             QuickLendXError::KYCNotFound => symbol_short!("KYC_NF"),
             QuickLendXError::InvalidKYCStatus => symbol_short!("KYC_IS"),
             QuickLendXError::AuditLogNotFound => symbol_short!("AUD_NF"),
-            QuickLendXError::AuditValidationFailed => symbol_short!("AUD_VF"),
             QuickLendXError::AuditIntegrityError => symbol_short!("AUD_IE"),
             QuickLendXError::AuditQueryError => symbol_short!("AUD_QE"),
             QuickLendXError::InvalidTag => symbol_short!("INV_TAG"),

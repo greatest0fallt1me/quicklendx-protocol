@@ -851,6 +851,14 @@
                             },
                             {
                               "key": {
+                                "symbol": "insurance"
+                              },
+                              "val": {
+                                "vec": []
+                              }
+                            },
+                            {
+                              "key": {
                                 "symbol": "investment_id"
                               },
                               "val": {
