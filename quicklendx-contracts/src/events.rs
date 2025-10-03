@@ -118,6 +118,60 @@ pub fn emit_invoice_defaulted(env: &Env, invoice: &crate::invoice::Invoice) {
     );
 }
 
+pub fn emit_insurance_added(
+    env: &Env,
+    investment_id: &BytesN<32>,
+    invoice_id: &BytesN<32>,
+    investor: &Address,
+    provider: &Address,
+    coverage_percentage: u32,
+    coverage_amount: i128,
+    premium_amount: i128,
+) {
+    env.events().publish(
+        (symbol_short!("ins_add"),),
+        (
+            investment_id.clone(),
+            invoice_id.clone(),
+            investor.clone(),
+            provider.clone(),
+            coverage_percentage,
+            coverage_amount,
+            premium_amount,
+        ),
+    );
+}
+
+pub fn emit_insurance_premium_collected(
+    env: &Env,
+    investment_id: &BytesN<32>,
+    provider: &Address,
+    premium_amount: i128,
+) {
+    env.events().publish(
+        (symbol_short!("ins_prm"),),
+        (investment_id.clone(), provider.clone(), premium_amount),
+    );
+}
+
+pub fn emit_insurance_claimed(
+    env: &Env,
+    investment_id: &BytesN<32>,
+    invoice_id: &BytesN<32>,
+    provider: &Address,
+    coverage_amount: i128,
+) {
+    env.events().publish(
+        (symbol_short!("ins_clm"),),
+        (
+            investment_id.clone(),
+            invoice_id.clone(),
+            provider.clone(),
+            coverage_amount,
+        ),
+    );
+}
+
 pub fn emit_platform_fee_updated(env: &Env, config: &PlatformFeeConfig) {
     env.events().publish(
         (symbol_short!("fee_upd"),),

@@ -26,8 +26,9 @@ use defaults::{
 use errors::QuickLendXError;
 use events::{
     emit_audit_query, emit_audit_validation, emit_escrow_created, emit_escrow_refunded,
-    emit_escrow_released, emit_investor_verified, emit_invoice_metadata_cleared,
-    emit_invoice_metadata_updated, emit_invoice_uploaded, emit_invoice_verified,
+    emit_escrow_released, emit_insurance_added, emit_insurance_premium_collected,
+    emit_investor_verified, emit_invoice_metadata_cleared, emit_invoice_metadata_updated,
+    emit_invoice_uploaded, emit_invoice_verified,
 };
 use investment::{Investment, InvestmentStatus, InvestmentStorage};
 use invoice::{DisputeStatus, Invoice, InvoiceMetadata, InvoiceStatus, InvoiceStorage};
@@ -473,6 +474,7 @@ impl QuickLendXContract {
             amount: bid.bid_amount,
             funded_at: env.ledger().timestamp(),
             status: InvestmentStatus::Active,
+            insurance: Vec::new(&env),
         };
         InvestmentStorage::store_investment(&env, &investment);
 
@@ -490,6 +492,46 @@ impl QuickLendXContract {
             &InvoiceStatus::Verified,
             &InvoiceStatus::Funded,
         );
+
+        Ok(())
+    }
+
+    pub fn add_investment_insurance(
+        env: Env,
+        investment_id: BytesN<32>,
+        provider: Address,
+        coverage_percentage: u32,
+    ) -> Result<(), QuickLendXError> {
+        let mut investment = InvestmentStorage::get_investment(&env, &investment_id)
+            .ok_or(QuickLendXError::StorageKeyNotFound)?;
+
+        investment.investor.require_auth();
+
+        if investment.status != InvestmentStatus::Active {
+            return Err(QuickLendXError::InvalidStatus);
+        }
+
+        let premium = Investment::calculate_premium(investment.amount, coverage_percentage);
+        if premium <= 0 {
+            return Err(QuickLendXError::InvalidAmount);
+        }
+
+        let coverage_amount =
+            investment.add_insurance(provider.clone(), coverage_percentage, premium)?;
+
+        InvestmentStorage::update_investment(&env, &investment);
+
+        emit_insurance_added(
+            &env,
+            &investment_id,
+            &investment.invoice_id,
+            &investment.investor,
+            &provider,
+            coverage_percentage,
+            coverage_amount,
+            premium,
+        );
+        emit_insurance_premium_collected(&env, &investment_id, &provider, premium);
 
         Ok(())
     }
@@ -516,6 +558,22 @@ impl QuickLendXContract {
         payment_amount: i128,
     ) -> Result<(), QuickLendXError> {
         do_settle_invoice(&env, &invoice_id, payment_amount)
+    }
+
+    pub fn get_invoice_investment(
+        env: Env,
+        invoice_id: BytesN<32>,
+    ) -> Result<Investment, QuickLendXError> {
+        InvestmentStorage::get_investment_by_invoice(&env, &invoice_id)
+            .ok_or(QuickLendXError::StorageKeyNotFound)
+    }
+
+    pub fn get_investment(
+        env: Env,
+        investment_id: BytesN<32>,
+    ) -> Result<Investment, QuickLendXError> {
+        InvestmentStorage::get_investment(&env, &investment_id)
+            .ok_or(QuickLendXError::StorageKeyNotFound)
     }
 
     /// Process a partial payment towards an invoice

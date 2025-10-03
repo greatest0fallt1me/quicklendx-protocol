@@ -3,7 +3,7 @@ use crate::audit::{
     log_invoice_operation, AuditOperation, AuditOperationFilter, AuditQueryFilter, AuditStorage,
 };
 use crate::bid::{BidStatus, BidStorage};
-use crate::investment::InvestmentStorage;
+use crate::investment::{Investment, InvestmentStorage};
 use crate::invoice::{Dispute, DisputeStatus, InvoiceCategory, InvoiceMetadata, LineItemRecord};
 use crate::verification::BusinessVerificationStatus;
 use soroban_sdk::{
@@ -3076,4 +3076,99 @@ fn test_dispute_validation() {
 
     let result = client.try_create_dispute(&invoice_id, &business, &reason, &empty_evidence);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_investment_insurance_lifecycle() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register_contract(None, QuickLendXContract);
+    let client = QuickLendXContractClient::new(&env, &contract_id);
+
+    let business = Address::generate(&env);
+    let investor = Address::generate(&env);
+    let provider = Address::generate(&env);
+    let admin = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    let currency = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = token::Client::new(&env, &currency);
+    let sac_client = token::StellarAssetClient::new(&env, &currency);
+
+    let initial_balance = 10_000i128;
+    sac_client.mint(&business, &initial_balance);
+    sac_client.mint(&investor, &initial_balance);
+
+    let expiration = env.ledger().sequence() + 1_000;
+    token_client.approve(&business, &contract_id, &initial_balance, &expiration);
+    token_client.approve(&investor, &contract_id, &initial_balance, &expiration);
+
+    client.set_admin(&admin);
+
+    let due_date = env.ledger().timestamp() + 86_400;
+    let invoice_id = client.store_invoice(
+        &business,
+        &1_000i128,
+        &currency,
+        &due_date,
+        &String::from_str(&env, "Invoice with insurance"),
+        &InvoiceCategory::Services,
+        &Vec::new(&env),
+    );
+
+    client.update_invoice_status(&invoice_id, &InvoiceStatus::Verified);
+    verify_investor_for_test(&env, &client, &investor, 10_000);
+
+    let bid_id = client.place_bid(&investor, &invoice_id, &1_000i128, &1_100i128);
+    client.accept_bid(&invoice_id, &bid_id);
+
+    let investment = client.get_invoice_investment(&invoice_id);
+    let investment_id = investment.investment_id.clone();
+
+    let invalid_attempt = client.try_add_investment_insurance(&investment_id, &provider, &150u32);
+    let err = invalid_attempt.err().expect("expected contract error");
+    let contract_error = err.expect("expected contract invoke error");
+    assert_eq!(contract_error, QuickLendXError::InvalidCoveragePercentage);
+
+    let coverage_percentage = 60u32;
+    client.add_investment_insurance(&investment_id, &provider, &coverage_percentage);
+
+    let duplicate_provider = Address::generate(&env);
+    let duplicate_attempt =
+        client.try_add_investment_insurance(&investment_id, &duplicate_provider, &30u32);
+    let err = duplicate_attempt.err().expect("expected contract error");
+    let contract_error = err.expect("expected contract invoke error");
+    assert_eq!(contract_error, QuickLendXError::OperationNotAllowed);
+
+    let insured_investment = client.get_invoice_investment(&invoice_id);
+    let investment_amount = insured_investment.amount;
+    assert_eq!(insured_investment.insurance.len(), 1);
+    let insurance = insured_investment
+        .insurance
+        .get(0)
+        .expect("expected insurance entry");
+    assert!(insurance.active);
+    assert_eq!(insurance.provider, provider);
+    assert_eq!(insurance.coverage_percentage, coverage_percentage);
+    let expected_coverage = investment_amount * coverage_percentage as i128 / 100;
+    assert_eq!(insurance.coverage_amount, expected_coverage);
+    let expected_premium = Investment::calculate_premium(investment_amount, coverage_percentage);
+    assert_eq!(insurance.premium_amount, expected_premium);
+
+    let stored_invoice = client.get_invoice(&invoice_id);
+    env.ledger().set_timestamp(stored_invoice.due_date + 1);
+    let result = client.try_handle_default(&invoice_id);
+    assert!(result.is_ok());
+
+    let after_default = client.get_invoice_investment(&invoice_id);
+    assert_eq!(after_default.status, InvestmentStatus::Defaulted);
+    assert_eq!(after_default.insurance.len(), 1);
+    let insurance_after = after_default
+        .insurance
+        .get(0)
+        .expect("expected insurance entry after claim");
+    assert!(!insurance_after.active);
+    assert_eq!(insurance_after.coverage_amount, expected_coverage);
 }
